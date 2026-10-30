@@ -13,9 +13,11 @@ Nearby phones relay for each other, so a message can hop from phone to phone unt
 [![Offline first](https://img.shields.io/badge/works-offline-1e40af)](#-how-it-works)
 [![Encrypted](https://img.shields.io/badge/chats-end--to--end%20encrypted-111827)](#-privacy--security)
 
-### [⬇️ Download the Android app (APK)](../../releases/latest)
+<a href="../../releases/latest/download/Pulse.apk">
+  <img src="https://img.shields.io/badge/%E2%AC%87%20Download%20Pulse.apk-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download Pulse.apk" height="48" />
+</a>
 
-<sub>Or grab the file straight from the repo: [Pulse.apk](Pulse.apk) · 69 MB</sub>
+<sub>Direct download · 69 MB · Android 6.0+ · [all releases](../../releases)</sub>
 
 </div>
 
@@ -25,7 +27,7 @@ Nearby phones relay for each other, so a message can hop from phone to phone unt
 
 | | |
 |---|---|
-| **Android phone** | 1. Download **Pulse.apk** from the [latest release](../../releases/latest) (or [directly](Pulse.apk)).<br>2. Open the file on your phone. If Android asks, allow **Install unknown apps** for your browser or Files app.<br>3. Open Pulse, create your local profile, and allow the Bluetooth / Nearby / location / notification prompts. |
+| **Android phone** | 1. Tap [**Download Pulse.apk**](../../releases/latest/download/Pulse.apk). It starts downloading right away.<br>2. Open the file on your phone. If Android asks, allow **Install unknown apps** for your browser or Files app.<br>3. Open Pulse, create your local profile, and allow the Bluetooth / Nearby / location / notification prompts. |
 | **Needs** | Android 6.0 or newer and Google Play Services (used for phone-to-phone discovery). |
 | **Heads up** | This build is signed with a debug key, not a Play Store key, so Android shows an "unknown source" warning. That is expected. |
 | **iPhone** | Not available yet. It needs a Mac and Apple's tools to build. |
