@@ -1,0 +1,53 @@
+# Pulse backend + database, one command:
+#   docker compose up
+#
+# Brings up MySQL 8 (with the schema auto-applied) and the API server on :4000.
+# Requires Docker Desktop. Nothing else to install.
+services:
+  db:
+    image: mysql:8
+    container_name: pulse-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: pulse
+      MYSQL_USER: pulse
+      MYSQL_PASSWORD: pulse
+    ports:
+      - '3306:3306'
+    volumes:
+      # Auto-run the schema on first boot of an empty data volume.
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - pulse-db-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-uroot', '-proot']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: pulse-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: '4000'
+      NODE_ENV: development
+      CORS_ORIGINS: '*'
+      JWT_SECRET: dev-insecure-secret-change-me
+      OTP_DEV_MODE: 'true'
+      SERVER_SEAL_SECRET: DyhLGtTvcjxr12WwiVBEytxWWCeheMpVYyHXDajELQc=
+      DB_HOST: db
+      DB_PORT: '3306'
+      DB_USER: pulse
+      DB_PASSWORD: pulse
+      DB_NAME: pulse
+    ports:
+      - '4000:4000'
+
+volumes:
+  pulse-db-data:

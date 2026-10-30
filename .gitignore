@@ -1,0 +1,40 @@
+# OSX
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# React Native / Metro
+.metro-health-check*
+*.jsbundle
+
+# Android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+*.keystore
+!debug.keystore
+
+# iOS
+ios/build/
+ios/Pods/
+ios/*.xcworkspace/xcuserdata/
+*.pbxuser
+
+# Env & secrets
+.env
+.env.local
+server/.env
+
+# Testing
+coverage/
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log

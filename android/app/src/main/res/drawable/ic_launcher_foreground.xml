@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pulse mark: a glowing core radiating two rings, centered in the safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer ring -->
+    <path
+        android:pathData="M54,24 a30,30 0 1 1 0,60 a30,30 0 1 1 0,-60 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeAlpha="0.3" />
+    <!-- Inner ring -->
+    <path
+        android:pathData="M54,34 a20,20 0 1 1 0,40 a20,20 0 1 1 0,-40 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="4.5"
+        android:strokeAlpha="0.85" />
+    <!-- Soft glow behind the core -->
+    <path android:pathData="M54,38 a16,16 0 1 1 0,32 a16,16 0 1 1 0,-32 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="16"
+                android:startColor="#73FFFFFF"
+                android:endColor="#00FFFFFF" />
+        </aapt:attr>
+    </path>
+    <!-- Core -->
+    <path
+        android:pathData="M54,45 a9,9 0 1 1 0,18 a9,9 0 1 1 0,-18 Z"
+        android:fillColor="#FFFFFFFF" />
+</vector>
