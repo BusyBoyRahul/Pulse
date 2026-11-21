@@ -1,91 +1,93 @@
 <div align="center">
 
-<img src="pulse-icon-512.png" width="120" alt="Pulse logo" />
+<img src="pulse-icon-512.png" width="128" alt="Pulse logo" />
 
 # Pulse
 
-**Message, call and send SOS alerts with no signal, no internet and no account.**
-Nearby phones relay for each other, so a message can hop from phone to phone until it reaches the person you meant.
+### Chat, call and send an SOS — even when there is no signal.
 
-[![Platform](https://img.shields.io/badge/platform-Android%206%2B-3DDC84?logo=android&logoColor=white)](#-download)
-[![React Native](https://img.shields.io/badge/React%20Native-0.75-61DAFB?logo=react&logoColor=white)](https://reactnative.dev)
-[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)](docs/TESTING.md)
-[![Offline first](https://img.shields.io/badge/works-offline-1e40af)](#-how-it-works)
-[![Encrypted](https://img.shields.io/badge/chats-end--to--end%20encrypted-111827)](#-privacy--security)
+Pulse is a private messenger for Android. Nearby phones pass messages to each other,
+so your words can reach a friend with **no mobile data, no Wi-Fi and no account**.
+When you do have internet, Pulse uses that too.
+
+<br>
 
 <a href="../../releases/latest/download/Pulse.apk">
-  <img src="https://img.shields.io/badge/%E2%AC%87%20Download%20Pulse.apk-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download Pulse.apk" height="48" />
+  <img src="https://img.shields.io/badge/%E2%AC%87%20%20Download%20Pulse.apk-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download Pulse.apk" height="52" />
 </a>
 
-<sub>Direct download · 57 MB · Android 6.0+ · [all releases](../../releases)</sub>
+<sub>Version 1.1 · 57 MB · Android 6.0 or newer · [all releases](../../releases)</sub>
+
+<br>
+
+![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?logo=android&logoColor=white)
+![Version](https://img.shields.io/badge/version-1.1-2F8BFF)
+![Tests](https://img.shields.io/badge/tests-256%20passing-brightgreen)
+![Works offline](https://img.shields.io/badge/works-offline-1e40af)
+![Encrypted](https://img.shields.io/badge/chats-end--to--end%20encrypted-111827)
 
 </div>
 
 ---
 
-## ⬇️ Download
+## 👋 Why Pulse?
 
-| | |
-|---|---|
-| **Android phone** | 1. Tap [**Download Pulse.apk**](../../releases/latest/download/Pulse.apk). It starts downloading right away.<br>2. Open the file on your phone. If Android asks, allow **Install unknown apps** for your browser or Files app.<br>3. Open Pulse, create your local profile, and allow the Bluetooth / Nearby / location / notification prompts. |
-| **Needs** | Android 6.0 or newer and Google Play Services (used for phone-to-phone discovery). |
-| **Heads up** | This build is signed with a debug key, not a Play Store key, so Android shows an "unknown source" warning. That is expected. |
-| **iPhone** | Not available yet. It needs a Mac and Apple's tools to build. |
+<table>
+<tr>
+<td width="33%" valign="top">
 
-> To see Pulse relay, you need **at least two phones** with it installed, and **three** to watch a message hop through a middle phone.
+### 📡 Works with no signal
+Phones near each other pass your message along, like friends handing a note down a row.
+A message can hop through other Pulse phones until it reaches the right person.
+
+</td>
+<td width="33%" valign="top">
+
+### 🔒 Private by design
+Every chat is end-to-end encrypted. There is **no account** and no phone number is needed.
+The phones that carry a message for you **cannot read it**.
+
+</td>
+<td width="33%" valign="top">
+
+### 🆘 Help in one hold
+Press and hold SOS. Pulse sends your location to every Pulse phone nearby and
+gets a text ready for your trusted people.
+
+</td>
+</tr>
+</table>
 
 ---
 
-## ✨ What it does
+## 📱 Take a look
 
-### 🆘 SOS
-- Press-and-hold trigger with a 5-second cancel window
-- GPS location attached to the alert
-- Goes by **SMS from your own SIM** to your Trusted Circle, with an honest "failed" screen if nothing could be sent
+<div align="center">
+<table>
+<tr>
+<td align="center"><img src="docs/screens/chats.jpg" width="170" alt="Chats"><br><sub><b>Chats</b><br>pinned, groups, secret</sub></td>
+<td align="center"><img src="docs/screens/pinned.jpg" width="170" alt="Pinned messages"><br><sub><b>Pinned messages</b><br>up to 3 per chat</sub></td>
+<td align="center"><img src="docs/screens/group.jpg" width="170" alt="Group info"><br><sub><b>Groups</b><br>picture, admins, rules</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screens/nearby.jpg" width="170" alt="Nearby radar"><br><sub><b>Nearby</b><br>the mesh switch + radar</sub></td>
+<td align="center"><img src="docs/screens/settings.jpg" width="170" alt="Settings"><br><sub><b>Settings</b><br>mesh, internet, privacy</sub></td>
+<td align="center"><img src="docs/screens/link.jpg" width="170" alt="Share link page"><br><sub><b>Share links</b><br>tap in WhatsApp, open Pulse</sub></td>
+</tr>
+</table>
+</div>
 
-### 💬 Chat, with no internet
-| | |
-|---|---|
-| **Nearby & relayed** | Chat with people in range, or through other Pulse phones in between (A → B → C) |
-| **Delivery ticks** | Sent ✓, delivered ✓✓, with a small relay icon when it came through a hop |
-| **Pairing first** | Direct chats and group invites need a request and accept, which also exchanges encryption keys |
-| **Groups** | Encrypted groups with member info, invites sealed per person |
-| **Rich messages** | Bold, italic, strike, mono, spoilers, emoji, reply, edit (15 min), forward, star, copy |
-| **Delete** | Delete for me, or for everyone |
-| **Disappearing** | Auto-delete timers and view-once photos |
-| **Media** | Photos, **any file or video up to 25 MB**, and voice notes |
-| **Extras** | Typing indicator, search, pin, mute, labels, chat-list tabs, wallpapers, notes to self |
+---
 
-### 📞 Calls that never show a phone number
-- In-app voice calls, encrypted, over the same mesh, so they work through relays
-- Only people you've paired with can ring you
-- Answer and Decline straight from the notification
+## ⬇️ Get it in 3 steps
 
-### 🔔 Real Android notifications
-- Proper notification channels, heads-up and lock-screen alerts
-- Reply and Mark-read from the notification, plus incoming-call actions
-- A quiet background service (no sound, no status-bar icon) keeps Pulse connected so messages and calls arrive with the app closed. It is on by default
+1. **Download** — tap the green button above (or [click here](../../releases/latest/download/Pulse.apk)) on your Android phone.
+2. **Open the file** — if Android asks, allow **Install unknown apps** for your browser or Files app.
+3. **Start Pulse** — make your local profile and allow the Bluetooth, Nearby and notification questions.
 
-### 🌐 Over the internet too
-- Messages also go through a short relay note while a direct encrypted link is being set up, so delivery takes about a second instead of waiting for the link
-- Voice and video calls use WebRTC with free public relay fallbacks (add your own server in Settings → Internet)
-
-### 🖼️ Media, status and wallpaper
-- Pick several photos, videos or files, then a full-screen preview with a caption, spoiler and view-once options
-- Status updates (text or photo): edit them, reply or react from the viewer, pull up to see who watched
-- Photo wallpapers with opacity and blur and a live preview
-
-### 👥 Accounts
-- Several accounts on one phone; a verified number can belong to only one of them, and adding an account can be cancelled at any step
-- If your number was confirmed and the SIM card changes, the confirmed badge is removed until you choose your number again
-
-### 🔒 Privacy & security
-- **End-to-end encryption** (NaCl: X25519 + XSalsa20-Poly1305) for messages, groups and call audio
-- **Relay phones can't read anything** they carry
-- **PIN and app lock**, optional fingerprint/face, and **locked chats** with hidden previews
-- Sensitive data encrypted at rest using the **Android Keystore**
-- **Encrypted backup and restore** to a `.pulsebak` file protected by your passphrase
-- Your own phone number is optional and masked everywhere
+> 💡 To watch Pulse relay a message you need **two phones**, and **three** to see a message hop through the one in the middle.
+>
+> ⚠️ Android shows an "unknown source" warning because Pulse is not on the Play Store and is signed with a debug key. That is expected.
 
 ---
 
@@ -95,55 +97,192 @@ Nearby phones relay for each other, so a message can hop from phone to phone unt
    ┌─────┐   in range   ┌─────┐   in range   ┌─────┐
    │  A  │ ───────────▶ │  B  │ ───────────▶ │  C  │
    └─────┘              └─────┘              └─────┘
-   sends sealed         can't read it,       opens it,
+   writes a sealed      can't read it,       opens it and
    message to C         just carries it      sends a ✓✓ back
 ```
 
-- **Transport:** Google **Nearby Connections** (Bluetooth + Wi-Fi, chosen automatically), plus a same-Wi-Fi LAN path when available.
-- **Relay:** store-and-forward with a hop limit. Packets are de-duplicated by id and re-offered to *new* neighbours, so a message waits for its recipient to come into range.
-- **Crypto:** each phone makes its own keypair on first launch. No server, no accounts.
-- **Storage:** chat history, preferences and keys are encrypted on the device.
+Pulse has three roads and uses whichever works:
+
+| Road | When | What it uses |
+|---|---|---|
+| 📶 **Nearby mesh** | People are close, even through other Pulse phones | Google Nearby Connections (Bluetooth + Wi-Fi) |
+| 🌐 **Internet** | You have data or Wi-Fi | Public relay mailboxes + direct encrypted links. No Pulse server. |
+| 💬 **SMS (SOS only)** | No data at all | Your own messages app, with the text ready — you tap Send |
+
+If the person is not reachable yet, a phone in between **holds the message** and hands it over when they come into range.
 
 ---
 
-## 🧱 Tech stack
+## ✨ What you can do
 
-| Layer | What |
+<details open>
+<summary><b>💬 Chat</b></summary>
+
+| | |
 |---|---|
-| App | React Native 0.75 · TypeScript · Zustand · React Navigation |
-| Crypto | TweetNaCl |
-| Native (Kotlin) | Nearby mesh · foreground service · call audio · notifications · secure store · media files · app share |
-| Tests | Jest, including a 3-phone A → B → C simulation |
+| **One-to-one, nearby or far** | Send to someone in range, through other phones, or over the internet |
+| **Delivery ticks** | Sent ✓ · delivered ✓✓ · read — and a small relay icon if it hopped |
+| **Message info** | A page for each message: the steps it went through and, in groups, who read it |
+| **Rich messages** | Bold, italic, strike, mono, spoilers, emoji, replies, edit (15 min), forward, star, copy, reactions |
+| **Media** | Several photos at once, videos and any file up to 25 MB, voice notes, polls, shared contacts |
+| **Pinned messages** | Pin up to **3** messages to the top of a group or one-to-one chat. A new pin never removes the others (not in secret chats or chats with disappearing messages) |
+| **Delete** | For you, or for everyone |
+| **Disappearing messages** | 24 hours, 7 days or 90 days, plus view-once photos |
+| **Secret chats** | Extra-private chats with their own keys and a self-destruct timer |
+| **Look** | Wallpapers with opacity and blur, labels, favourites, archive, search, mute, notes to yourself |
 
-### Repository layout
+</details>
 
-```
-Pulse/
-├── App.tsx                 # root: navigation + gates (onboarding, lock)
-├── src/
-│   ├── screens/            # Chats, Conversation, Nearby, SOS, Notes, Profile, Settings…
-│   ├── components/         # UI kit (Screen, Avatar, Sheet, PinPad, Radar…)
-│   ├── mesh/               # mesh engine, relay protocol, Nearby / BLE transports
-│   ├── store/              # Zustand stores (chat, calls, pairing, groups, locks…)
-│   ├── services/           # crypto, notifier, backup, media files, permissions…
-│   ├── sos/                # SOS packet + relay bridge
-│   └── theme/              # monochrome design tokens
-├── android/                # native project + Kotlin modules (com.pulse)
-├── server/                 # legacy backend from the earlier online design (unused)
-└── docs/                   # testing, native setup, privacy policy, store notes, audit log
-```
+<details>
+<summary><b>👥 Groups</b></summary>
+
+| | |
+|---|---|
+| **Create in two steps** | Pick people, then give it a name, picture and description |
+| **Up to 50 people** | Everyone gets their own sealed copy, over the mesh or the internet |
+| **Admins** | Add or remove people, make other admins. Removing someone changes the group's key |
+| **Rules** | Who may change the name and picture · who may send (turn on "admins only" for an announcement group) |
+| **Join by link** | Anyone with the link can ask to join — an **admin must say yes** |
+| **Who got it** | Read by · delivered to · not delivered yet · not joined yet, by name |
+| **@mentions** | Type `@` to pick someone. A mention still reaches you in a muted group |
+| **Everything is recorded** | "Maya added Rahul", "You pinned a message" show right in the chat |
+| **Shared media** | A small strip of photos in the group info, and a full Media screen with tabs for photos, files and links |
+
+</details>
+
+<details>
+<summary><b>📞 Calls</b></summary>
+
+- **Voice calls over the mesh** — encrypted, they work through nearby phones.
+- **Voice and video over the internet** — WebRTC, with free public fallbacks (you can add your own server in Settings → Internet).
+- Only people you are connected with can ring you. No phone number is ever shown.
+- **Minimise** a call and a green bar at the top keeps it one tap away.
+- A call history with one-tap call back. Names always show names, never IDs.
+- Answer or decline right from the notification.
+
+_Group calls are not available yet._
+
+</details>
+
+<details>
+<summary><b>🔎 Finding people</b></summary>
+
+| | |
+|---|---|
+| **@usernames** | Unique with no server — the **oldest claim wins**. Check a name before you take it |
+| **QR code or link** | Show your code, or share a link. Opening it offers "Connect" |
+| **Your contacts** | Optional: find friends who already use Pulse |
+| **Phone number** | Optional and off by default. A number is only trusted after a text-message check |
+| **Many accounts** | Keep several accounts on one phone |
+
+</details>
+
+<details>
+<summary><b>🆘 Safety</b></summary>
+
+- **SOS** — press and hold, with a 5-second cancel window. Your location goes to nearby Pulse phones, and a text with your location is prepared for your **Trusted Circle** (you tap Send).
+- **Safety notes** — leave a short note for people near a spot.
+- **Responder mode** — see a redacted "someone nearby may need help" alert. Switch it off any time.
+
+</details>
+
+<details>
+<summary><b>🔒 Privacy &amp; security</b></summary>
+
+- **End-to-end encryption** (NaCl: X25519 + XSalsa20-Poly1305) for messages, groups and call audio.
+- **Relay phones can't read anything** they carry.
+- **Two separate locks:** an **app lock** (PIN, fingerprint or face) and a **chat lock** with its own code. Locked chats live in a hidden folder with hidden previews.
+- **Number privacy:** your number is optional and masked everywhere.
+- **Encrypted backup** to a `.pulsebak` file protected by your passphrase.
+- Data on the phone is encrypted using the **Android Keystore**.
+
+</details>
 
 ---
 
-## 🛠️ Build it yourself
+## 📶 The mesh switch, in plain words
 
-**Requirements:** Node 18+, JDK 17, Android SDK. Details in [docs/NATIVE_SETUP.md](docs/NATIVE_SETUP.md).
+The Bluetooth &amp; Wi-Fi mesh is **off until you turn it on** (Nearby tab). Your phone's Wi-Fi and Bluetooth belong to you, so Pulse follows these rules:
+
+| | Rule |
+|---|---|
+| 1️⃣ | **Mesh on** → Pulse starts looking for people and lets Android turn Wi-Fi/Bluetooth on if they were off. The mesh stays on. |
+| 2️⃣ | **Mesh off** → Pulse never touches your Wi-Fi or Bluetooth. Opening the app never turns them on. |
+| 3️⃣ | **You turn Wi-Fi off** → the mesh switch turns itself off. |
+| 4️⃣ | **Wi-Fi is on** → the mesh turns on only if you chose **Settings → Mesh on by default**. It is off unless you choose it. |
+
+Messages over the internet work either way. There is **no permanent background notification** — a short one shows only while you are on a call or while the mesh is starting.
+
+> ℹ️ Android does not let any app switch Wi-Fi on by itself. Pulse asks Android's own Nearby service to do it when you flip the mesh on. On some phones it may not, and then the mesh waits and the Settings row reads "Wi-Fi is off".
+
+---
+
+## 🔗 Links you can tap
+
+Pulse share links are normal web addresses, so WhatsApp, Telegram and SMS make them tappable:
+
+```
+https://busyboyrahul.github.io/Pulse/add#k=…&n=Maya        ← connect with a person
+https://busyboyrahul.github.io/Pulse/join#g=…&a=…&n=Trail%20crew   ← ask to join a group
+```
+
+Tapping one opens a small page with the person or group, an **Open in Pulse** button, and a download button for people who don't have Pulse yet.
+Everything after the `#` stays on the phone — it never reaches the web server — and a link only carries a public key and a name, nothing secret. Older `pulse://` links still work.
+
+---
+
+## ❓ Questions
+
+<details>
+<summary><b>Does Pulse need the internet?</b></summary>
+No. Nearby phones work with none. Internet is used when you have it, and you can switch it off or limit it to "only when Pulse is open" in Settings → Internet.
+</details>
+
+<details>
+<summary><b>Do I need an account or a phone number?</b></summary>
+No. Pulse makes a key pair on your phone the first time you open it. A phone number is optional.
+</details>
+
+<details>
+<summary><b>Why does Pulse not run in the background all the time?</b></summary>
+A permanent "running in the background" notification is annoying, so Pulse no longer shows one. While Pulse is running, messages arrive; if Android pauses Pulse, waiting messages arrive when you open it.
+</details>
+
+<details>
+<summary><b>Is there an iPhone version?</b></summary>
+Not yet. It needs a Mac and Apple's tools to build.
+</details>
+
+<details>
+<summary><b>Why does Android warn me before installing?</b></summary>
+Pulse is installed from this page, not from the Play Store, and it is signed with a debug key. Android warns about any app installed this way.
+</details>
+
+---
+
+## 🧪 How sure are we?
+
+| | |
+|---|---|
+| ✅ **Checked** | **256 automated tests pass**, including three virtual phones relaying A → B → C, groups over the internet, files, backup and locks. The release app was tried on an Android emulator. |
+| ⚠️ **Not yet proven** | Real-radio range, call audio quality, relaying with the screen off, and whether Nearby turns Wi-Fi on for every phone need a **field test with real phones**. The checklist is in [docs/AUDIT_AND_FIXES.md](docs/AUDIT_AND_FIXES.md). |
+| 🚧 **Limits** | Android only. Large files are slow over the mesh. Pairing is trust-on-first-use. Backups don't include photos, files or voice notes. |
+| 🗺️ **Not built** | iPhone version · group voice and video calls |
+
+---
+
+## 🛠️ For developers
+
+<details>
+<summary><b>Build it yourself</b></summary>
+
+**Needs:** Node 18+, JDK 17 and the Android SDK. Details: [docs/NATIVE_SETUP.md](docs/NATIVE_SETUP.md).
 
 ```powershell
 npm install
 npm run typecheck
-npm test                 # 100 tests
-npm run android          # run on a connected phone / emulator
+npm test                 # 256 tests
+npm run android          # run on a connected phone or emulator
 ```
 
 **Build the installable APK** (Windows, one command):
@@ -152,23 +291,57 @@ npm run android          # run on a connected phone / emulator
 .\build-apk.ps1          # produces Pulse.apk on your Desktop
 ```
 
----
+**Publish a release** (the download button always serves the newest one):
 
-## 🧪 Status & honesty
+```powershell
+gh release create v1.2 Pulse.apk --latest --title "Pulse 1.2"
+gh release delete v1.1 --cleanup-tag -y      # keep only the newest
+```
 
-| | |
+</details>
+
+<details>
+<summary><b>Tech stack</b></summary>
+
+| Layer | What |
 |---|---|
-| ✅ **Verified** | 100 automated tests pass, including 3-phone relay, files, backup and locks. The release app was checked on an Android emulator. |
-| ⚠️ **Not yet proven** | Real-radio behaviour, call audio quality, notifications with the app closed, and relaying with the screen off all need a **3-phone field test**. The checklist is in [docs/AUDIT_AND_FIXES.md](docs/AUDIT_AND_FIXES.md#field-test-3-android-phones--the-promise-being-tested-a-reaches-c-only-through-b). |
-| 🚧 **Limits** | Android only. Large files are slow over the mesh. Pairing is trust-on-first-use. Backups don't include photos, files or voice notes. |
-| 🗺️ **Not built** | iPhone version, QR contact cards |
+| App | React Native 0.75 · TypeScript · Zustand · React Navigation · Reanimated |
+| Crypto | TweetNaCl (box, secretbox, sign) |
+| Internet | Public relays for sealed mailboxes · WebRTC links and calls · no Pulse server for chat |
+| Native (Kotlin) | Nearby mesh · call audio · notifications · secure store · media files · contacts · QR scanner · app share |
+| Tests | Jest, with a virtual-phone harness (A, B, C with their own keys and storage) |
+| Link page | Plain HTML, CSS and JavaScript in [`site/`](site), published with GitHub Pages |
 
-Full history of what was fixed and added: [docs/AUDIT_AND_FIXES.md](docs/AUDIT_AND_FIXES.md).
+</details>
+
+<details>
+<summary><b>Repository layout</b></summary>
+
+```
+Pulse/
+├── App.tsx                 # root: navigation + gates (onboarding, lock)
+├── src/
+│   ├── screens/            # Chats, Conversation, Group info, Nearby, Calls, Settings…
+│   ├── components/         # UI kit (Screen, Avatar, Popover, MediaStrip, CallBar…)
+│   ├── mesh/               # mesh engine, relay protocol, Nearby transport, mesh rules
+│   ├── net/                # internet: relays, WebRTC links, internet calls, @usernames
+│   ├── store/              # Zustand stores (chat, groups, calls, pairing, prefs, locks…)
+│   ├── services/           # crypto, ratchet, notifier, backup, links, names, media…
+│   ├── sos/                # SOS packet + relay bridge
+│   ├── testing/            # virtual-phone harness used by the tests
+│   └── theme/              # design tokens
+├── android/                # native project + Kotlin modules (com.pulse)
+├── site/                   # the page that opens when a shared link is tapped (GitHub Pages)
+├── server/                 # optional phone-check backend (not needed to chat)
+└── docs/                   # testing, native setup, privacy policy, store notes, audit log, screenshots
+```
+
+</details>
 
 ---
 
-## 📚 Docs
+## 📚 More
 
-[Testing](docs/TESTING.md) · [Native setup](docs/NATIVE_SETUP.md) · [Privacy policy](docs/PRIVACY_POLICY.md) · [Store submission](docs/STORE_SUBMISSION.md) · [Audit & fixes](docs/AUDIT_AND_FIXES.md)
+[Testing](docs/TESTING.md) · [Native setup](docs/NATIVE_SETUP.md) · [Privacy policy](docs/PRIVACY_POLICY.md) · [Store submission](docs/STORE_SUBMISSION.md) · [Audit &amp; fixes](docs/AUDIT_AND_FIXES.md) · [What changed](CHANGELOG.md)
 
-<div align="center"><sub>Built for the moments when there's no signal.</sub></div>
+<div align="center"><sub>Built for the moments when there's no signal. · © 2026 Creoteck</sub></div>

@@ -67,11 +67,33 @@ Add inside `<manifest>` (above `<application>`):
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-<!-- Keep the mesh alive in the background -->
+<!-- Wi-Fi side of the nearby mesh, and internet -->
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+<uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+    android:usesPermissionFlags="neverForLocation" />
+
+<!-- Calls, voice notes, photos, QR scanning, contacts (only on "find friends"), optional lock -->
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+<uses-permission android:name="android.permission.READ_CONTACTS" />
+<uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+<!-- Foreground service: runs ONLY during a voice call (so the microphone keeps working with the screen off)
+     and for ~12 seconds while the mesh starts. There is no permanent background service or notification. -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+<uses-permission android:name="android.permission.VIBRATE" />
 
 <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 ```
@@ -109,6 +131,30 @@ Add inside `<manifest>` (above `<application>`):
 > notes (Phase 7).
 
 ---
+
+## The mesh and Wi-Fi / Bluetooth
+
+The nearby mesh (Google Nearby Connections, `NearbyMeshModule.kt`) is **off by default** and starts only when the person turns it on.
+While it is off, Pulse never touches Wi-Fi or Bluetooth, and opening the app never turns them on. When the person turns the mesh on,
+the radio starts (with a short foreground service so Android lets Nearby bring Wi-Fi up). The JS side (`src/mesh/meshAuto.ts`,
+`radioGate.ts`) turns the mesh switch off when the person turns Wi-Fi off, and (only if "Mesh on by default" is on) turns it on when
+Wi-Fi turns on. Android does not let apps switch Wi-Fi on directly; on some phones Nearby may not either.
+
+## Deep links
+
+`AndroidManifest.xml` opens Pulse for `pulse://add?…` (a person) and `pulse://group?…` (a group). Shared links are web addresses
+(`https://busyboyrahul.github.io/Pulse/add#…` and `/join#…`, built in `src/services/inviteLink.ts`); the page in [`site/`](../site)
+shows the person or group and its **Open in Pulse** button opens the `pulse://` form. The page is published by
+`.github/workflows/pages.yml` (GitHub Pages).
+
+## Release build
+
+```powershell
+cd android
+.\gradlew.bat :app:assembleRelease -PonlyArm64 -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+```
+
+Then publish `Pulse.apk` as a GitHub Release (see the README). Raise `versionCode` and `versionName` in `android/app/build.gradle` first.
 
 ## Permission request order (handled in-app, Phase 1)
 

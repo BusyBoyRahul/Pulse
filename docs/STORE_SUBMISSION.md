@@ -45,15 +45,20 @@ reviewer needs, plus the exact justification text to paste into review notes.
 - **Nearby devices / Bluetooth** (`BLUETOOTH_SCAN` with
   `usesPermissionFlags="neverForLocation"`, `BLUETOOTH_ADVERTISE`,
   `BLUETOOTH_CONNECT`): declared for offline mesh relaying.
-- **Foreground service** (`connectedDevice` + `location` types): required to
-  keep the mesh alive with a persistent notification. Provide the prominent-
-  disclosure screenshot (the onboarding "Join the mesh" step covers this).
+- **Foreground service** (`connectedDevice` + `microphone` types): runs only
+  during a voice call (so the microphone keeps working with the screen off) and for
+  a few seconds while the nearby mesh starts. There is **no permanent
+  background service or notification**. The mesh itself is off until the user
+  turns it on.
 
 ### Data Safety form summary
-- Collected: phone number, contacts you add, coarse/fine location (SOS-time),
-  push token, user content (notes).
-- Shared: nothing sold; SOS location shared only with the user's own contacts.
-- Encryption in transit: yes. SOS payloads additionally end-to-end encrypted.
+- Collected: nothing is sent to a Pulse server for chat. Location is used only
+  when the user presses SOS (shared with nearby Pulse phones and the user's own
+  trusted contacts). A phone number is optional; only a hash is published, and only
+  if the user switches on "find me by number". Contacts are read only on "find
+  friends" and compared as hashes.
+- Shared: nothing sold. Sealed messages travel through public relay servers.
+- Encryption in transit: yes. Chats, groups and call audio are end-to-end encrypted.
 - Data deletion method: provided.
 
 ## Honest messaging (applies to both listings)

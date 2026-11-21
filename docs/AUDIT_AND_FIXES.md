@@ -195,3 +195,39 @@ On the emulator with real Android: the file picker → a 195 KB file shows in th
 * Creating a backup takes a few seconds on a phone (it stretches the passphrase on purpose); about 30 s on the slow emulator.
 * Voice notes can't be recorded during a call.
 * **Still not built:** an iPhone version (needs a Mac and Apple's tools), QR contact cards with scanning (needs a camera-scanner library; Nearby already connects people).
+
+---
+
+## Update — November 2026 (version 1.1)
+
+What was added and fixed since the first audit. Everything below is covered by automated tests unless marked **needs a real-phone check**.
+
+**Groups.** Delivery used to be a broadcast with no recipient, so other members did not receive messages over the internet. Each message is now
+sent as one addressed, sealed copy per member (mesh, internet or relay mailbox), with per-member delivery and read tracking and resends only to
+members who have not confirmed. Added: admins, rules, picture, description, join by link with approval, key change on removal, pins, mentions,
+typing, history lines, and a Message info page with who read / got / has not got it.
+
+**Pinned messages.** A new pin used to replace the old one. A chat now keeps up to 3, in groups and one-to-one chats; one-to-one pins are shared with
+the other person and are cleared when the message is deleted or disappearing messages are switched on.
+
+**Calls.** The "down arrow" on the call screen minimised the call with no way back. It is now a labelled **Minimise** button, and a green bar on every
+screen returns to the call. Internet calls fell back to the first characters of a key when a name was unknown; one name lookup (`services/names.ts`)
+now serves every call screen and the call history.
+
+**Mesh and Wi-Fi.** Opening Pulse started Google's Nearby service, which switched Wi-Fi and Bluetooth on. The mesh is now off by default, never
+touches Wi-Fi or Bluetooth while off, switches itself off when the person turns Wi-Fi off (also when the change happened while Pulse was in the
+background), and has an optional "Mesh on by default" setting. **Needs a real-phone check:** whether Nearby powers Wi-Fi on for every phone after the
+switch is turned on.
+
+**Background notification.** The permanent "running quietly" notification and its always-on service were removed. A foreground service now runs only
+during a call, and for about 12 seconds while the mesh starts.
+
+**Usernames.** `@username` claims are unique without a server: the oldest claim wins, and every phone applies the same rule. A bug where repeated
+searches returned nothing (a global de-duplication set) was fixed.
+
+**Chat interface.** Chat lock and app lock are separate; the paperclip asks for photo permission once and no longer moves the chat; a clearer voice
+recording flow; long-press selects and lets you add more; Message info is its own page; wallpaper opacity and blur sliders.
+
+**Links.** Share links are web addresses so chat apps make them tappable (`site/` is published with GitHub Pages); `pulse://` links still work.
+
+**Open.** Group voice and video calls are not built. A three-phone field test (see [TESTING.md](TESTING.md)) has not been done.

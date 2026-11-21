@@ -56,7 +56,7 @@ export default function AboutScreen() {
         <Button label="Share Pulse" variant="secondary" onPress={share} />
 
         <Txt variant="caption" tone="muted" center style={styles.version}>
-          Pulse v1.0 · © {'2026'} Creoteck
+          Pulse v1.1 · © {'2026'} Creoteck
         </Txt>
       </View>
     </Screen>
