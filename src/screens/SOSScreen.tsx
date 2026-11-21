@@ -1,28 +1,32 @@
-import React, {useEffect} from 'react';
+import {themedStyles} from '@/theme/themed';
+import React, {useCallback, useEffect} from 'react';
 import {StyleSheet, View} from 'react-native';
-import {useNavigation} from '@react-navigation/native';
-import {Screen, Button, Txt, Card, HoldButton, StatusPill} from '@/components';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
+import {Screen, Button, Txt, Card, HoldButton, StatusPill, ProfileButton, Icon} from '@/components';
 import {colors, spacing} from '@/theme/theme';
 import config from '@/config';
 import type {AppNavigation} from '@/navigation/types';
 import {useSosStore} from '@/store/sosStore';
 import {useMeshStore} from '@/mesh/meshStore';
+import {usePeersStore} from '@/store/peersStore';
 import {useContactsStore} from '@/store/contactsStore';
-import {requestSms, requestLocation} from '@/services/permissions';
+import {requestLocation} from '@/services/permissions';
 
 export default function SOSScreen() {
   const nav = useNavigation<AppNavigation>();
   const {state, countdownMs, fix, error, smsResult, beginCountdown, cancel, reset} = useSosStore();
   const devices = useMeshStore(s => s.devices);
+  // Same count the Nearby tab shows (identified people), so the two screens never disagree.
+  const nearbyCount = usePeersStore(s => Object.keys(s.peers).length);
   const contacts = useContactsStore(s => s.contacts);
   const hasContacts = contacts.length > 0;
 
-  // Ask for SMS + location up front (not mid-emergency) so an SOS can text
-  // contacts from the SIM, with a location, the instant it's triggered.
-  useEffect(() => {
-    void requestSms();
-    void requestLocation();
-  }, []);
+  // Ask for location up front (not mid-emergency) so an SOS carries it the instant it's triggered.
+  useFocusEffect(
+    useCallback(() => {
+      void requestLocation();
+    }, []),
+  );
 
   // Leave the screen in a clean state when it unmounts.
   useEffect(() => () => reset(), [reset]);
@@ -56,6 +60,7 @@ export default function SOSScreen() {
   if (state === 'sent') {
     const sentCount = smsResult?.sent ?? 0;
     const failedCount = smsResult?.failed ?? 0;
+    const openedCount = smsResult?.opened ?? 0;
     return (
       <Screen
         footer={
@@ -66,9 +71,7 @@ export default function SOSScreen() {
         }>
         <View style={styles.center}>
           <View style={styles.sentBadge}>
-            <Txt variant="display" tone="success">
-              ✓
-            </Txt>
+            <Icon name="check" size={48} color={colors.success} strokeWidth={2.6} />
           </View>
           <Txt variant="title" center style={styles.msg}>
             SOS sent
@@ -79,13 +82,15 @@ export default function SOSScreen() {
               : 'Broadcasting to any Pulse phone that comes into range'}
             {sentCount > 0
               ? ` and texted ${sentCount} contact${sentCount === 1 ? '' : 's'}${fix ? ' with your location' : ''}.`
+              : openedCount > 0
+              ? '. Your messages app is open with the SOS text ready — tap Send.'
               : '.'}
             {failedCount > 0 ? ` ${failedCount} text${failedCount === 1 ? '' : 's'} couldn’t go through.` : ''}
           </Txt>
           <Card style={styles.honest} raised>
             <Txt variant="caption" tone="muted" center>
-              Nearby phones will see your alert and location. Texts also go over
-              cell signal — no internet needed. If you can, call your local
+              Nearby phones will see your alert and location. The text goes over
+              cell signal, no internet needed. If you can, call your local
               emergency number too.
             </Txt>
           </Card>
@@ -126,23 +131,19 @@ export default function SOSScreen() {
 
   // idle / cancelled
   return (
-    <Screen
-      footer={
-        <Txt variant="caption" tone="muted" center>
-          Press and hold for 3 seconds to send.
-        </Txt>
-      }>
+    <Screen style={{paddingHorizontal: spacing.lg}}>
       <View style={styles.top}>
-        <Txt variant="title">Emergency</Txt>
+        <View style={styles.who}>
+          <ProfileButton />
+          <Txt variant="title">Emergency</Txt>
+        </View>
         <StatusPill
-          label={`${devices.length} nearby`}
-          tone={devices.length > 0 ? 'online' : 'idle'}
+          label={`${nearbyCount} nearby`}
+          tone={nearbyCount > 0 ? 'online' : 'idle'}
         />
       </View>
       <Txt variant="body" tone="secondary" style={styles.intro}>
-        Holding SOS alerts every Pulse phone around you — showing who you are and
-        where — so people nearby can help. It also texts your trusted contacts if
-        you've added any.
+        Alerts nearby phones and your trusted contacts.
       </Txt>
 
       <View style={styles.holdWrap}>
@@ -173,14 +174,17 @@ export default function SOSScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   top: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    minHeight: 64,
   },
   intro: {marginTop: spacing.md},
+  who: {flexDirection: 'row', alignItems: 'center', gap: spacing.md},
   holdWrap: {alignItems: 'center', marginTop: spacing.xl},
   center: {flex: 1, alignItems: 'center', justifyContent: 'center'},
   count: {fontSize: 96, fontWeight: '800', lineHeight: 104},
@@ -197,4 +201,4 @@ const styles = StyleSheet.create({
   failBadge: {backgroundColor: colors.dangerDim},
   addBtn: {marginTop: spacing.xl, alignSelf: 'stretch'},
   honest: {marginTop: spacing.xl},
-});
+}));

@@ -1,6 +1,7 @@
 import {AppState, NativeModules, Platform} from 'react-native';
 import {useSettingsStore, inQuietHours} from '@/store/settingsStore';
 import {usePrefsStore} from '@/store/prefsStore';
+import {isSecretId} from '@/services/e2ee';
 
 /**
  * Real Android notifications — heads-up banners, the notification shade and the
@@ -19,6 +20,7 @@ type NativeNotify = {
   areEnabled(): Promise<boolean>;
   openChannelSettings(channelKey: string | null): void;
   setSecure(on: boolean): void;
+  setWindowColor(hex: string): void;
   isBatteryUnrestricted(): Promise<boolean>;
   requestBatteryUnrestricted(): void;
   addListener(event: string): void;
@@ -52,6 +54,8 @@ export type MessageNote = {
   avatar?: string; // data: URI
   /** The chat that is open on screen right now, if any. */
   activeConversation?: string | null;
+  /** The message mentions me by name (@Maya): it still notifies, even in a muted group. */
+  mention?: boolean;
 };
 
 export const notifier = {
@@ -65,14 +69,14 @@ export const notifier = {
     }
     const prefs = usePrefsStore.getState();
     const app = useSettingsStore.getState().app;
-    if (!app.notifyMessages || prefs.isMuted(m.conversationId) || prefs.isBlocked(m.conversationId)) {
+    if (!app.notifyMessages || (prefs.isMuted(m.conversationId) && !m.mention) || prefs.isBlocked(m.conversationId)) {
       return;
     }
     // Looking straight at that chat: no banner for it.
     if (isForeground() && m.activeConversation === m.conversationId) {
       return;
     }
-    const locked = !!prefs.prefs[m.conversationId]?.locked;
+    const locked = !!prefs.prefs[m.conversationId]?.locked || isSecretId(m.conversationId);
     const at = Date.now();
     const history = locked ? [] : [...(lines.get(m.conversationId) ?? []), {sender: m.sender, text: m.text, at}].slice(-MAX_LINES);
     lines.set(m.conversationId, history);
@@ -253,6 +257,11 @@ export const notifier = {
 
   setSecure(on: boolean): void {
     NativeNotifyModule?.setSecure(on);
+  },
+
+  /** Colour behind the system navigation bar (so a bottom sheet looks like it reaches the bottom edge). */
+  setWindowColor(hex: string): void {
+    NativeNotifyModule?.setWindowColor?.(hex);
   },
 
   async batteryUnrestricted(): Promise<boolean> {

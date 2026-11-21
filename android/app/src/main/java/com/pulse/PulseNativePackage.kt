@@ -14,7 +14,10 @@ class PulseNativePackage : ReactPackage {
           CallAudioModule(reactContext),
           SecureStoreModule(reactContext),
           NotifyModule(reactContext),
-          MediaFilesModule(reactContext))
+          MediaFilesModule(reactContext),
+          SmsVerifyModule(reactContext),
+          ContactsModule(reactContext),
+          ScannerModule(reactContext))
 
   override fun createViewManagers(
       reactContext: ReactApplicationContext

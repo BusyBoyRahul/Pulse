@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useState} from 'react';
 import {KeyboardAvoidingView, Platform, StyleSheet, View} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
@@ -144,7 +145,7 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   flex: {flex: 1, backgroundColor: colors.bg},
   hero: {alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.xxl},
   brand: {marginTop: spacing.md},
@@ -152,4 +153,4 @@ const styles = StyleSheet.create({
   sub: {marginBottom: spacing.xl},
   dev: {marginTop: -spacing.sm, marginBottom: spacing.sm},
   err: {marginTop: spacing.md},
-});
+}));

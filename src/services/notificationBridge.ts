@@ -2,6 +2,7 @@ import {AppState, Linking, NativeEventEmitter} from 'react-native';
 import {navigationRef} from '@/navigation/ref';
 import {notifier, NativeNotifyModule, isForeground} from '@/services/notifier';
 import {useCallStore} from '@/store/callStore';
+import {useInternetCallStore} from '@/net/internetCall';
 import {useChatStore} from '@/store/chatStore';
 import {useGroupsStore} from '@/store/groupsStore';
 import {usePairingStore} from '@/store/pairingStore';
@@ -23,12 +24,25 @@ function whenReady(fn: () => void, tries = 40): void {
 }
 
 const goTab = (tab: 'ChatsTab' | 'NearbyTab') => whenReady(() => nav.navigate('Main', {screen: tab}));
-const goCall = () =>
+const goInternetCall = () =>
+  whenReady(() => {
+    if (navigationRef.getCurrentRoute()?.name !== 'InternetCall') {
+      nav.navigate('InternetCall');
+    }
+  });
+// The right call screen for whichever kind of call is happening (over the internet, or Bluetooth/Wi-Fi).
+const goCall = () => {
+  const net = useInternetCallStore.getState().phase;
+  if (net !== 'idle') {
+    goInternetCall();
+    return;
+  }
   whenReady(() => {
     if (navigationRef.getCurrentRoute()?.name !== 'Call') {
       nav.navigate('Call');
     }
   });
+};
 
 type Ev = Record<string, string | undefined>;
 
@@ -62,18 +76,29 @@ export function handleAction(ev: Ev): void {
       goTab('NearbyTab');
       break;
     case 'answer':
+      if (useInternetCallStore.getState().phase === 'incoming') {
+        void useInternetCallStore.getState().accept();
+        goInternetCall();
+        break;
+      }
       void useCallStore.getState().accept();
       goCall();
       break;
     case 'decline':
       if (kind === 'group-invite') {
         useGroupsStore.getState().decline(conv);
+      } else if (useInternetCallStore.getState().phase === 'incoming') {
+        useInternetCallStore.getState().decline();
       } else {
         useCallStore.getState().decline();
       }
       break;
     case 'hangup':
-      useCallStore.getState().hangup();
+      if (['outgoing', 'connecting', 'active'].includes(useInternetCallStore.getState().phase)) {
+        useInternetCallStore.getState().end();
+      } else {
+        useCallStore.getState().hangup();
+      }
       break;
     case 'reply':
       if (ev.text?.trim() && (kind === 'direct' || kind === 'group')) {

@@ -1,6 +1,7 @@
 import React from 'react';
 import {Image, StyleSheet, View} from 'react-native';
 import Svg, {Circle, Defs, Pattern, Rect} from 'react-native-svg';
+import {colors, mix, themeInfo} from '@/theme/theme';
 import {Gradient} from './Gradient';
 import type {AppSettings} from '@/store/settingsStore';
 
@@ -8,28 +9,29 @@ export type WallpaperKind = AppSettings['wallpaper'];
 
 export const WALLPAPERS: {kind: WallpaperKind; label: string}[] = [
   {kind: 'default', label: 'Default'},
-  {kind: 'black', label: 'Pure black'},
+  {kind: 'black', label: 'Plain'},
   {kind: 'slate', label: 'Slate'},
-  {kind: 'dusk', label: 'Dusk'},
+  {kind: 'dusk', label: 'Tint'},
   {kind: 'dots', label: 'Dots'},
 ];
 
-/** The picture behind a chat. Fills its parent. */
-export function Wallpaper({kind, photo}: {kind: WallpaperKind; photo?: string | null}) {
+/** The picture behind a chat. Fills its parent. Always matches the chosen theme. */
+export function Wallpaper({kind, photo, opacity = 1, blur = 0}: {kind: WallpaperKind; photo?: string | null; opacity?: number; blur?: number}) {
+  const plain = <View style={[StyleSheet.absoluteFill, {backgroundColor: colors.bg}]} />;
   switch (kind) {
     case 'black':
-      return <View style={[StyleSheet.absoluteFill, {backgroundColor: '#000'}]} />;
+      return plain;
     case 'slate':
-      return <Gradient colors={['#1A1C21', '#0A0B0D']} angle="vertical" style={StyleSheet.absoluteFill} />;
+      return <Gradient colors={[colors.surfaceRaised, colors.bg]} angle="vertical" style={StyleSheet.absoluteFill} />;
     case 'dusk':
-      return <Gradient colors={['#22202E', '#060609']} angle="vertical" style={StyleSheet.absoluteFill} />;
+      return <Gradient colors={[mix(colors.primary, colors.bg, themeInfo.isDark ? 0.22 : 0.14), colors.bg]} angle="vertical" style={StyleSheet.absoluteFill} />;
     case 'dots':
       return (
-        <View style={[StyleSheet.absoluteFill, {backgroundColor: '#050505'}]}>
+        <View style={[StyleSheet.absoluteFill, {backgroundColor: colors.bg}]}>
           <Svg width="100%" height="100%">
             <Defs>
               <Pattern id="dots" width={22} height={22} patternUnits="userSpaceOnUse">
-                <Circle cx={11} cy={11} r={1.3} fill="#2B2B30" />
+                <Circle cx={11} cy={11} r={1.3} fill={colors.border} />
               </Pattern>
             </Defs>
             <Rect width="100%" height="100%" fill="url(#dots)" />
@@ -38,15 +40,16 @@ export function Wallpaper({kind, photo}: {kind: WallpaperKind; photo?: string | 
       );
     case 'photo':
       return photo ? (
-        <View style={StyleSheet.absoluteFill}>
-          <Image source={{uri: `data:image/jpeg;base64,${photo}`}} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          <View style={[StyleSheet.absoluteFill, {backgroundColor: 'rgba(0,0,0,0.55)'}]} />
+        // The picture itself, as it is. How much of it shows (opacity) and how soft it is (blur) are the person's choice;
+        // there is no tint laid over it.
+        <View style={[StyleSheet.absoluteFill, {backgroundColor: colors.bg}]}>
+          <Image source={{uri: `data:image/jpeg;base64,${photo}`}} style={[StyleSheet.absoluteFill, {opacity}]} resizeMode="cover" blurRadius={blur} />
         </View>
       ) : (
-        <View style={[StyleSheet.absoluteFill, {backgroundColor: '#000'}]} />
+        plain
       );
     default:
-      return <Gradient colors={['#0C0C0E', '#000000']} angle="vertical" style={StyleSheet.absoluteFill} />;
+      return plain;
   }
 }
 

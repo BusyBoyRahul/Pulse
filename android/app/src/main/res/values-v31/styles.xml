@@ -1,0 +1,12 @@
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <item name="android:windowBackground">@color/launchBlue</item>
+        <item name="android:navigationBarColor">@color/windowBg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:windowSplashScreenBackground">@color/launchBlue</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>

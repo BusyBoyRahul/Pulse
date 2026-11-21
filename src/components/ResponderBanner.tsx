@@ -1,8 +1,9 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect} from 'react';
 import {Linking, Pressable, StyleSheet, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
-import {colors, radius, spacing} from '@/theme/theme';
+import {colors, radius, spacing, shadowTone} from '@/theme/theme';
 import {useSettingsStore} from '@/store/settingsStore';
 import {Txt} from './Text';
 import {Icon} from './Icon';
@@ -73,7 +74,7 @@ export function ResponderBanner() {
 
 export default ResponderBanner;
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   wrap: {
     position: 'absolute',
     top: 0,
@@ -88,11 +89,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderRadius: radius.lg,
     padding: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
+    shadowColor: shadowTone(),
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
     shadowOffset: {width: 0, height: 6},
-    elevation: 10,
+    elevation: 5,
   },
   row: {flexDirection: 'row', alignItems: 'center', gap: spacing.md},
   icon: {
@@ -116,4 +117,4 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   mapTxt: {color: colors.onPrimary},
-});
+}));

@@ -5,8 +5,10 @@ type NativeCall = {
   stop(): Promise<boolean>;
   setMuted(on: boolean): void;
   setSpeaker(on: boolean): void;
+  sessionStart(speaker: boolean): void;
+  sessionStop(): void;
   playFrame(frameB64: string): void;
-  showIncomingCall(name: string): void;
+  showIncomingCall(name: string, video: boolean): void;
   clearIncomingCall(): void;
   addListener(event: string): void;
   removeListeners(count: number): void;
@@ -28,8 +30,11 @@ export const callAudio = {
   stop: () => (Native ? Native.stop().catch(() => false) : Promise.resolve(false)),
   setMuted: (on: boolean) => Native?.setMuted(on),
   setSpeaker: (on: boolean) => Native?.setSpeaker(on),
+  /** An internet call begins / ends: set the phone up for call audio and put it back afterwards. */
+  sessionStart: (speaker: boolean) => Native?.sessionStart(speaker),
+  sessionStop: () => Native?.sessionStop(),
   playFrame: (frame: string) => Native?.playFrame(frame),
-  showIncomingCall: (name: string) => Native?.showIncomingCall(name),
+  showIncomingCall: (name: string, video = false) => Native?.showIncomingCall(name, video),
   clearIncomingCall: () => Native?.clearIncomingCall(),
 
   onFrame(cb: (frame: string) => void): () => void {

@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React from 'react';
 import {Text as RNText, StyleSheet, TextProps, TextStyle} from 'react-native';
 import {colors, typography} from '@/theme/theme';
@@ -12,14 +13,16 @@ type Props = TextProps & {
   style?: TextStyle | TextStyle[];
 };
 
-const toneColor: Record<Tone, string> = {
-  primary: colors.text,
-  secondary: colors.textSecondary,
-  muted: colors.textMuted,
-  danger: colors.dangerBright,
-  accent: colors.primaryBright,
-  success: colors.success,
-};
+// Read when the text is drawn (not when this file loads), so a theme change shows at once.
+const toneColor = (tone: Tone): string =>
+  ({
+    primary: colors.text,
+    secondary: colors.textSecondary,
+    muted: colors.textMuted,
+    danger: colors.dangerBright,
+    accent: colors.primaryBright,
+    success: colors.success,
+  })[tone];
 
 /**
  * Typed text primitive. Also guarantees line-height keeps up with font-size:
@@ -29,7 +32,7 @@ const toneColor: Record<Tone, string> = {
 export function Txt({variant = 'body', tone = 'primary', center, style, children, ...rest}: Props) {
   const merged = StyleSheet.flatten([
     typography[variant] as TextStyle,
-    {color: toneColor[tone]},
+    {color: toneColor(tone)},
     center && styles.center,
     style as TextStyle,
   ]) as TextStyle;
@@ -45,8 +48,8 @@ export function Txt({variant = 'body', tone = 'primary', center, style, children
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   center: {textAlign: 'center'},
-});
+}));
 
 export default Txt;

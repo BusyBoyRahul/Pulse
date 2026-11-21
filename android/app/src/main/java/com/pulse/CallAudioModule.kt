@@ -167,6 +167,44 @@ class CallAudioModule(private val ctx: ReactApplicationContext) :
     promise.resolve(true)
   }
 
+  // ---- internet calls (WebRTC does the audio itself; Pulse only sets the phone up for a call) -----------------
+
+  @Volatile private var sessionOn = false
+  private var sessionSavedMode = AudioManager.MODE_NORMAL
+  private var sessionSavedSpeaker = false
+
+  /**
+   * An internet call is starting: put the phone in "call" audio mode (so the sound uses the call volume and the earpiece
+   * or loudspeaker), and keep the microphone alive if the person leaves the screen (a visible in-call notice).
+   */
+  @ReactMethod
+  fun sessionStart(speaker: Boolean) {
+    try {
+      if (!sessionOn) {
+        val am = audioManager
+        sessionSavedMode = am.mode
+        sessionSavedSpeaker = am.isSpeakerphoneOn
+        sessionOn = true
+        MeshForegroundService.callMode(ctx, true)
+        am.mode = AudioManager.MODE_IN_COMMUNICATION
+      }
+      audioManager.isSpeakerphoneOn = speaker
+    } catch (_: Exception) {}
+  }
+
+  /** The internet call ended: give the phone's audio back exactly as it was. */
+  @ReactMethod
+  fun sessionStop() {
+    if (!sessionOn) return
+    sessionOn = false
+    try {
+      val am = audioManager
+      am.isSpeakerphoneOn = sessionSavedSpeaker
+      am.mode = sessionSavedMode
+      MeshForegroundService.callMode(ctx, false)
+    } catch (_: Exception) {}
+  }
+
   @ReactMethod
   fun setMuted(on: Boolean) {
     muted = on
@@ -342,9 +380,9 @@ class CallAudioModule(private val ctx: ReactApplicationContext) :
    * screen is off. Heads-up notification with the caller's NAME only.
    */
   @ReactMethod
-  fun showIncomingCall(name: String) {
+  fun showIncomingCall(name: String, video: Boolean) {
     try {
-      NotifyHelper.showIncomingCall(ctx, name)
+      NotifyHelper.showIncomingCall(ctx, name, video)
     } catch (_: Exception) {}
   }
 

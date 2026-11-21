@@ -1,19 +1,22 @@
+import {themedStyles, useThemeVersion} from '@/theme/themed';
 import React, {useCallback, useEffect, useState} from 'react';
-import {Alert, BackHandler, Pressable, StyleSheet, View} from 'react-native';
+import {BackHandler, Pressable, StyleSheet, View} from 'react-native';
 import {colors} from '@/theme/theme';
 import {useLockStore} from '@/store/lockStore';
 import {useChatStore} from '@/store/chatStore';
 import {mediaFiles} from '@/services/mediaFiles';
 import {PinPad} from './PinPad';
 import {Txt} from './Text';
+import {alertDialog} from './Dialog';
 
 /**
  * Sits on top of the whole app. When "App lock" is on and Pulse was away long enough,
  * nothing is visible until the PIN (or fingerprint) is given.
  */
 export function LockGate() {
-  const locked = useLockStore(s => s.appLocked && !!s.saved?.appLock);
-  const bio = useLockStore(s => !!(s.saved?.biometric && s.bioAvailable));
+  useThemeVersion();
+  const locked = useLockStore(s => s.appLocked && !!s.saved.app);
+  const bio = useLockStore(s => !!(s.saved.app?.biometric && s.bioAvailable));
   const [error, setError] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
 
@@ -45,20 +48,20 @@ export function LockGate() {
 
   const submit = (pin: string) => {
     const lock = useLockStore.getState();
-    const r = lock.verify(pin);
+    const r = lock.verify('app', pin);
     if (r === 'ok') {
       setError(null);
       lock.unlockApp();
       return;
     }
-    setError(r === 'wait' ? `Too many wrong tries. Wait ${lock.waitSeconds()} seconds.` : 'Wrong PIN');
+    setError(r === 'wait' ? `Too many wrong tries. Wait ${lock.waitSeconds('app')} seconds.` : 'Wrong PIN');
     setResetKey(k => k + 1);
   };
 
   const forgot = () =>
-    Alert.alert(
+    alertDialog(
       'Forgot your PIN?',
-      'The PIN can’t be recovered. The only way back in is to erase every chat on this phone and remove the lock. Your connections and profile stay.',
+      'The PIN can’t be recovered. The only way back in is to erase every chat on this phone and remove the app lock. Your connections and profile stay.',
       [
         {text: 'Cancel', style: 'cancel'},
         {
@@ -66,7 +69,7 @@ export function LockGate() {
           style: 'destructive',
           onPress: () => {
             void useChatStore.getState().clearAllChats();
-            useLockStore.getState().removePin();
+            useLockStore.getState().removePin('app');
           },
         },
       ],
@@ -94,8 +97,8 @@ export function LockGate() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   cover: {...StyleSheet.absoluteFillObject, backgroundColor: colors.bg, zIndex: 100000, elevation: 100},
-});
+}));
 
 export default LockGate;

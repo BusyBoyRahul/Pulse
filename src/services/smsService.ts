@@ -1,21 +1,16 @@
-import {Platform} from 'react-native';
-import {SendDirectSms} from 'react-native-send-direct-sms';
+import {Linking, Platform} from 'react-native';
 import type {TrustedContact} from '@/types';
 import type {Fix} from './locationService';
 
 /**
- * Free, server-less SOS delivery: text the user's trusted contacts directly
- * from THIS phone's SIM.
+ * Serverless SOS text: Pulse opens the phone's own messages app with the SOS and your location
+ * already written for all your trusted contacts; one tap on Send. SMS works on bare cell signal
+ * even when mobile data and Wi-Fi are down.
  *
- * Why this matters: SMS rides the cellular control channel, so it works on bare
- * cell signal even when mobile data / Wi-Fi are down — exactly the "no
- * internet" situation Pulse is built for. No Twilio, no backend, no cost beyond
- * the user's normal SMS plan.
- *
- * (Android only — iOS forbids apps from sending SMS silently. On iOS the mesh
- * remains the delivery path, plus the optional cloud relay.)
+ * Pulse has no SMS permission (it makes Google Play Protect block apps installed outside the
+ * Play Store). The nearby-phone alert still goes out by itself.
  */
-export type SosSmsResult = {sent: number; failed: number; supported: boolean};
+export type SosSmsResult = {sent: number; failed: number; supported: boolean; /** contacts the text was prepared for (the person taps Send) */ opened?: number};
 
 function buildMessage(name: string | undefined, fix: Fix | null, note?: string): string {
   const who = name || 'A Pulse user';
@@ -32,7 +27,7 @@ export const smsService = {
     return Platform.OS === 'android';
   },
 
-  /** Text every trusted contact directly from this device. Never throws. */
+  /** Open the messages app with the SOS ready for every trusted contact. Never throws. */
   async sendSos(
     contacts: TrustedContact[],
     opts: {name?: string; fix: Fix | null; note?: string},
@@ -41,17 +36,13 @@ export const smsService = {
       return {sent: 0, failed: 0, supported: this.supported};
     }
     const body = buildMessage(opts.name, opts.fix, opts.note);
-    let sent = 0;
-    let failed = 0;
-    for (const c of contacts) {
-      try {
-        await SendDirectSms(c.phoneNumber, body);
-        sent += 1;
-      } catch {
-        failed += 1;
-      }
+    const to = contacts.map(c => c.phoneNumber.replace(/[^\d+]/g, '')).join(',');
+    try {
+      await Linking.openURL(`sms:${to}?body=${encodeURIComponent(body)}`);
+      return {sent: 0, failed: 0, supported: true, opened: contacts.length};
+    } catch {
+      return {sent: 0, failed: contacts.length, supported: true};
     }
-    return {sent, failed, supported: true};
   },
 };
 

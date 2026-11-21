@@ -1,6 +1,8 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect, useState} from 'react';
 import {Pressable, StyleSheet, TextStyle, View} from 'react-native';
 import {maskPhone} from '@/services/privacy';
+import {colors} from '@/theme/theme';
 import {Txt} from './Text';
 import {Icon} from './Icon';
 
@@ -32,14 +34,14 @@ export function MaskedNumber({value, style, tone = 'muted'}: Props) {
         <Txt variant="caption" tone={tone} style={style}>
           {shown ? value : maskPhone(value)}
         </Txt>
-        <Icon name={shown ? 'eyeOff' : 'eye'} size={13} color="#6E6E76" />
+        <Icon name={shown ? 'eyeOff' : 'eye'} size={13} color={colors.textMuted} />
       </View>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   row: {flexDirection: 'row', alignItems: 'center', gap: 6},
-});
+}));
 
 export default MaskedNumber;

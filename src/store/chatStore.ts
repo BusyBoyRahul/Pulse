@@ -1,16 +1,26 @@
 import {create} from 'zustand';
 import naclUtil from 'tweetnacl-util';
 import config from '@/config';
-import type {ChatMessage, ConversationKind, FileInfo, MeshPacket, Reaction, ReplyPreview} from '@/types';
+import type {ChatMessage, ConversationKind, FileInfo, MeshPacket, PollData, Reaction, ReplyPreview} from '@/types';
 import {getMeshEngine} from '@/mesh/bleManager';
+import {validKey} from '@/services/inviteLink';
 import {getIdentity, shortId} from '@/services/identity';
 import {newPacketId} from '@/mesh/relayProtocol';
 import {boxTo, openBox, sealGroup, openGroup} from '@/services/crypto';
+import {e2ee, isSecretId} from '@/services/e2ee';
+import {useSecretStore, SECRET_TIMERS, onSecretWipe} from './secretStore';
+import {useStatusStore, onStatusSend, StatusWire} from './statusStore';
+import {useNetStore} from '@/net/netStore';
+import {onProfileSend, applyProfile, ProfileWire} from '@/services/profileSync';
 import {getJSON, setJSON, saveBlob, loadBlob, removeBlob} from '@/services/storage';
 import {lanManager} from '@/lan/lanManager';
-import {useGroupsStore} from './groupsStore';
+import {useGroupsStore, canSendIn} from './groupsStore';
+import {mentions} from '@/services/mentions';
+
+/** The kinds of event that put a NEW message in a chat (as opposed to receipts, reactions, edits…). */
+const CONTENT_EVENTS: string[] = ['msg', 'img', 'mbeg', 'fbeg', 'poll', 'card'];
 import {usePeersStore} from './peersStore';
-import {usePairingStore} from './pairingStore';
+import {usePairingStore, ensureSession} from './pairingStore';
 import {useSessionStore} from './sessionStore';
 import {usePrefsStore} from './prefsStore';
 import {useSettingsStore} from './settingsStore';
@@ -20,6 +30,12 @@ import {mediaFiles, CHUNK_BYTES, MAX_FILE_BYTES, kindOfMime} from '@/services/me
 
 export const NEARBY = 'nearby';
 
+/** Options chosen when a poll is created (see PollData for what each means). closeInMs is relative; closesAt is absolute. */
+/** Photos sent together share a group id `g`; `i` is the place (0 first) and `n` how many in all. */
+export type AlbumTag = {g: string; i: number; n: number};
+
+export type PollSend = {multi?: boolean; anon?: boolean; quiz?: number; explain?: string; closeInMs?: number; closesAt?: number};
+
 // --- wire event: everything that happens in a chat is one of these ----------
 type ReplyWire = {n: string; t: string};
 type ChatEvent =
@@ -28,11 +44,13 @@ type ChatEvent =
   // Real media transfer, Quick-Share style: a header then N ordered chunks, so a
   // full-resolution photo streams reliably over Bluetooth/Wi-Fi (Nearby), well
   // past the ~32 KB single-frame limit. Reassembled on the far side.
-  | {k: 'mbeg'; id: string; name: string; mime: string; n: number; r?: ReplyWire; sp?: 1; vo?: 1}
+  | {k: 'mbeg'; id: string; name: string; mime: string; n: number; r?: ReplyWire; sp?: 1; vo?: 1; vs?: number; c?: string; al?: AlbumTag}
   | {k: 'mchk'; id: string; i: number; d: string}
   // "I'm missing these pieces of photo <id> — please send them again."
   | {k: 'mreq'; id: string; miss: number[]}
-  | {k: 'poll'; id: string; name: string; q: string; o: string[]; r?: ReplyWire}
+  | {k: 'poll'; id: string; name: string; q: string; o: string[]; r?: ReplyWire; m?: 1; an?: 1; qz?: number; ex?: string; cl?: number}
+  // A shared person: their public key (pk) and the name they use (pn).
+  | {k: 'card'; id: string; name: string; pk: string; pn: string; r?: ReplyWire}
   | {k: 'react'; mid: string; emoji: string; name: string}
   | {k: 'vote'; mid: string; opt: number; name: string}
   // Delivery receipt: "your message reached my phone" (sent automatically).
@@ -43,13 +61,21 @@ type ChatEvent =
   | {k: 'del'; mid: string}
   | {k: 'edit'; mid: string; text: string}
   // Files, videos and voice notes: a header, then ordered pieces read straight from / written to disk.
-  | {k: 'fbeg'; id: string; name: string; f: {n: string; s: number; m: string; t: FileInfo['kind']; d?: number; th?: string}; n: number; r?: ReplyWire}
+  | {k: 'fbeg'; id: string; name: string; f: {n: string; s: number; m: string; t: FileInfo['kind']; d?: number; th?: string}; n: number; r?: ReplyWire; c?: string}
   | {k: 'fchk'; id: string; i: number; d: string}
   | {k: 'freq'; id: string; miss: number[]}
   // The receiver opened a view-once photo: it is gone on both phones.
   | {k: 'opn'; mid: string}
   // Disappearing messages for this chat changed (0 = off).
-  | {k: 'dis'; ms: number};
+  | {k: 'dis'; ms: number}
+  // The messages pinned to the top of a one-to-one chat, the whole list as the sender has it (empty = none). w: 1 = the sender of this note wrote that message.
+  | {k: 'pin'; ps: {mid: string; w: 0 | 1; t: string}[]}
+  // First message of a fresh encrypted session (carries nothing, just hands over keys).
+  | {k: 'hi'}
+  // Status updates (handled by statusStore, never shown as a chat message).
+  | StatusWire
+  // A connected person's profile photo / about (handled by profileSync).
+  | ProfileWire;
 
 // Per-chunk source chars. After JSON + seal + double-base64 (~1.8x) this keeps
 // each mesh frame comfortably under Nearby's 32 KB BYTES limit.
@@ -114,6 +140,30 @@ const FILE_MAX_ASKS = 14;
 const lastTypingSent = new Map<string, number>();
 const safeFileName = (n: string) => n.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80) || 'file';
 const selfKey = () => getIdentity().publicKey;
+const MAX_PINS = 3;
+/** Take a one-to-one chat's pinned message away (just that one when an id is given, otherwise all of them). */
+function clearPin(conversationId: string, mid?: string) {
+  const pins = usePrefsStore.getState().prefs[conversationId]?.pinMsgs;
+  if (!pins?.length) {
+    return;
+  }
+  const left = mid ? pins.filter(p => p.mid !== mid) : [];
+  if (left.length !== pins.length) {
+    usePrefsStore.getState().patch(conversationId, {pinMsgs: left.length ? left : undefined});
+  }
+}
+/** Keep this list of pinned messages here and tell the other person (said three times in case one is lost — but never an old list after a newer change). */
+function sharePins(conversationId: string, kind: ConversationKind, pins: {mid: string; from: string; t: string; by: string}[]) {
+  usePrefsStore.getState().patch(conversationId, {pinMsgs: pins.length ? pins : undefined});
+  const note: ChatEvent = {k: 'pin', ps: pins.map(p => ({mid: p.mid, w: p.from === selfKey() ? 1 : 0, t: p.t}))};
+  const sig = pins.map(p => p.mid).join(',');
+  const same = () => (usePrefsStore.getState().prefs[conversationId]?.pinMsgs ?? []).map(p => p.mid).join(',') === sig;
+  quietSend(conversationId, kind, note);
+  setTimeout(() => same() && quietSend(conversationId, kind, note), 3000);
+  setTimeout(() => same() && quietSend(conversationId, kind, note), 15000);
+}
+/** The short plain copy of a pinned message that is kept and shown in the bar. */
+const pinText = (t: unknown) => (typeof t === 'string' ? t.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 160) : '');
 // Chunks that outran their header (different relay paths reorder things).
 const orphanChunks = new Map<string, Map<number, string>>();
 // Outbound photos kept briefly so a receiver can ask for missing pieces.
@@ -137,6 +187,8 @@ type OutItem = {
   tries: number;
   nextAt: number;
   createdAt: number;
+  /** A group message: the members whose phones haven't confirmed it yet. Only they get the resends. */
+  pending?: string[];
 };
 
 type ChatState = {
@@ -160,9 +212,11 @@ type ChatState = {
     kind: ConversationKind,
     base64: string,
     reply?: ReplyPreview,
-    opts?: {spoiler?: boolean; viewOnce?: boolean},
+    opts?: {spoiler?: boolean; viewOnce?: boolean; viewSecs?: number; caption?: string; album?: AlbumTag},
   ) => Promise<void>;
-  sendPoll: (conversationId: string, kind: ConversationKind, question: string, options: string[]) => Promise<void>;
+  sendPoll: (conversationId: string, kind: ConversationKind, question: string, options: string[], settings?: PollSend) => Promise<void>;
+  /** Share a person from my contacts as a card the other side can add or message. */
+  sendContact: (conversationId: string, kind: ConversationKind, person: {key: string; name: string}) => Promise<void>;
   react: (conversationId: string, kind: ConversationKind, messageId: string, emoji: string) => Promise<void>;
   vote: (conversationId: string, kind: ConversationKind, pollId: string, opt: number) => Promise<void>;
   deleteLocal: (conversationId: string, messageId: string) => void;
@@ -175,7 +229,7 @@ type ChatState = {
     conversationId: string,
     kind: ConversationKind,
     file: {path: string; name: string; size: number; mime: string},
-    opts?: {kind?: FileInfo['kind']; dur?: number; reply?: ReplyPreview},
+    opts?: {kind?: FileInfo['kind']; dur?: number; reply?: ReplyPreview; caption?: string},
   ) => Promise<void>;
   /** Send a recorded voice note. */
   sendVoice: (
@@ -192,7 +246,11 @@ type ChatState = {
   setDisappear: (conversationId: string, kind: ConversationKind, ms: number) => void;
   toggleStar: (conversationId: string, messageId: string) => void;
   editMessage: (conversationId: string, kind: ConversationKind, messageId: string, text: string) => boolean;
-  forwardMessage: (toId: string, toKind: ConversationKind, msg: ChatMessage) => Promise<void>;
+  /** Pin one more message to the top of a one-to-one chat for both people (up to 3; the others stay). 'full' = 3 are pinned already. Not in secret chats or chats with disappearing messages. */
+  pinMessage: (conversationId: string, kind: ConversationKind, pin: {mid: string; mine: boolean; text: string}) => 'ok' | 'full' | 'no';
+  /** Take one pinned message away (the others stay). */
+  unpinMessage: (conversationId: string, kind: ConversationKind, mid: string) => void;
+  forwardMessage: (toId: string, toKind: ConversationKind, msg: ChatMessage, album?: AlbumTag) => Promise<void>;
   /** Storage & data: wipe every saved photo / every chat from this phone. */
   clearAllMedia: () => Promise<void>;
   clearAllChats: () => Promise<void>;
@@ -224,16 +282,40 @@ function hasMessage(get: Getter, conversationId: string, id: string): boolean {
   return (get().byConversation[conversationId] ?? []).some(m => m.id === id);
 }
 
+/** An album tag that came over the wire: a short group id and a sensible position, or nothing. */
+function cleanAlbum(a: unknown): AlbumTag | undefined {
+  const t = a as Partial<AlbumTag> | undefined;
+  if (!t || typeof t.g !== 'string' || !/^[A-Za-z0-9]{3,24}$/.test(t.g) || !Number.isInteger(t.i) || !Number.isInteger(t.n)) {
+    return undefined;
+  }
+  const n = t.n as number;
+  const i = t.i as number;
+  return n >= 2 && n <= 10 && i >= 0 && i < n ? {g: t.g, i, n} : undefined;
+}
+
+/** A caption that came over the wire (or from the composer): plain text, trimmed, at most 500 characters. */
+function cleanCaption(c: unknown): string | undefined {
+  if (typeof c !== 'string') {
+    return undefined;
+  }
+  const t = c.trim().slice(0, 500);
+  return t || undefined;
+}
+
 function previewOf(m: {type: string; text?: string; viewOnce?: boolean; file?: FileInfo}): string {
   if (m.type === 'file') {
     return m.file?.kind === 'voice' ? 'Voice message' : m.file?.kind === 'video' ? 'Video' : m.file?.name ?? 'File';
   }
-  return m.type === 'image' ? (m.viewOnce ? 'View-once photo' : 'Photo') : m.type === 'poll' ? 'Poll' : stripFormatting(m.text ?? '');
+  return m.type === 'image' ? (m.viewOnce ? 'View-once photo' : 'Photo') : m.type === 'poll' ? 'Poll' : m.type === 'contact' ? 'Contact' : stripFormatting(m.text ?? '');
 }
 
 /** Direct chat needs a connection; a group needs membership; there is no open room. */
 function canSendTo(conversationId: string, kind: ConversationKind): boolean {
   if (kind === 'direct') {
+    if (isSecretId(conversationId)) {
+      const chat = useSecretStore.getState().chats[conversationId];
+      return !!chat && chat.status === 'ready' && usePairingStore.getState().isPaired(chat.peerKey);
+    }
     // You can always write to yourself ("notes to self"); anyone else needs a connection.
     return conversationId === selfKey() || usePairingStore.getState().isPaired(conversationId);
   }
@@ -278,6 +360,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
     hydrateHistory(set);
+    onSecretWipe(id => get().clearConversation(id));
+    onStatusSend((peerKey, event) => quietSend(peerKey, 'direct', event));
+    onProfileSend((peerKey, event) => quietSend(peerKey, 'direct', event));
     const me = getIdentity();
     getMeshEngine().subscribe('CHAT', (packet: MeshPacket) => {
       if (usePrefsStore.getState().isBlocked(packet.origin)) {
@@ -292,10 +377,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (!usePairingStore.getState().isPaired(packet.origin)) {
           return;
         }
-        const json = openBox(packet.payload, packet.nonce, packet.origin, me.secretKey);
-        event = json ? (JSON.parse(json) as ChatEvent) : null;
-        conversationId = packet.origin;
+        let json: string | null = null;
+        if (packet.nonce === 'dr1') {
+          // Forward-secret session (Double Ratchet).
+          const opened = e2ee.decrypt(packet.origin, packet.payload);
+          if (opened) {
+            json = opened.text;
+            conversationId = opened.sessionId;
+          } else {
+            ensureSession(packet.origin, true); // can't read it: ask for fresh keys
+            return;
+          }
+        } else {
+          json = openBox(packet.payload, packet.nonce, packet.origin, me.secretKey);
+          conversationId = packet.origin;
+        }
+        try {
+          event = json ? (JSON.parse(json) as ChatEvent) : null;
+        } catch {
+          event = null;
+        }
+        if (isSecretId(conversationId)) {
+          const chat = useSecretStore.getState().chats[conversationId];
+          if (!chat || chat.peerKey !== packet.origin) {
+            return; // not a secret chat I have (any more)
+          }
+          if (event && chat.status !== 'ready') {
+            useSecretStore.getState().markReady(conversationId); // keys are working both ways
+          }
+        }
         convKind = 'direct';
+        // Status updates ride the same private channel but live in their own feed.
+        if (event && (event.k === 'st' || event.k === 'stx' || event.k === 'stv')) {
+          if (!isSecretId(conversationId)) {
+            useStatusStore.getState().apply(event, packet.origin);
+          }
+          return;
+        }
+        if (event && event.k === 'prof') {
+          if (!isSecretId(conversationId)) {
+            applyProfile(packet.origin, event);
+          }
+          return;
+        }
       } else {
         const wire = unb64<{g?: string; c?: string; n?: string; e?: ChatEvent}>(packet.payload);
         if (!wire) {
@@ -303,11 +427,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
         if (wire.g && wire.c && wire.n) {
           const group = useGroupsStore.getState().get(wire.g);
-          if (!group) {
+          // Only people who are in the group count, whatever key they hold.
+          if (!group || !group.members.includes(packet.origin)) {
             return;
           }
           const json = openGroup(wire.c, wire.n, group.key);
-          event = json ? (JSON.parse(json) as ChatEvent) : null;
+          try {
+            event = json ? (JSON.parse(json) as ChatEvent) : null;
+          } catch {
+            event = null;
+          }
+          // In an announcement group (only admins can send), anybody else's new messages are ignored.
+          if (event && CONTENT_EVENTS.includes(event.k) && !canSendIn(group, packet.origin)) {
+            return;
+          }
           conversationId = wire.g;
           convKind = 'group';
         }
@@ -325,20 +458,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (packet.recipient !== me.publicKey || !packet.nonce || !app.typingIndicator) {
         return;
       }
-      if (!usePairingStore.getState().isPaired(packet.origin) || usePrefsStore.getState().isBlocked(packet.origin)) {
+      if (usePrefsStore.getState().isBlocked(packet.origin)) {
         return;
       }
       const json = openBox(packet.payload, packet.nonce, packet.origin, me.secretKey);
       let on = false;
+      let g: string | undefined;
       try {
-        on = !!(json && (JSON.parse(json) as {on?: boolean}).on);
+        const w = json ? (JSON.parse(json) as {on?: boolean; g?: string}) : null;
+        on = !!w?.on;
+        g = typeof w?.g === 'string' ? w.g : undefined;
       } catch {
         return;
       }
+      // Typing in a group is stored per group and person ("groupId:person"); it must come from a member of that group.
+      // Typing in a one-to-one chat must come from someone I'm connected with.
       const origin = packet.origin;
-      set(state => ({typing: {...state.typing, [origin]: on ? Date.now() + 6000 : 0}}));
+      let key = origin;
+      if (g) {
+        const group = useGroupsStore.getState().get(g);
+        if (!group || !group.members.includes(origin)) {
+          return;
+        }
+        key = `${g}:${origin}`;
+      } else if (!usePairingStore.getState().isPaired(origin)) {
+        return;
+      }
+      set(state => ({typing: {...state.typing, [key]: on ? Date.now() + 6000 : 0}}));
       if (on) {
-        setTimeout(() => set(state => ({typing: {...state.typing, [origin]: (state.typing[origin] ?? 0) > Date.now() ? state.typing[origin] : 0}})), 6200);
+        setTimeout(() => set(state => ({typing: {...state.typing, [key]: (state.typing[key] ?? 0) > Date.now() ? state.typing[key] : 0}})), 6200);
       }
     });
 
@@ -349,7 +497,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setActive: conversationId => set(() => ({active: conversationId})),
 
   sendText: async (conversationId, kind, text, reply) => {
-    const t = text.trim();
+    // Trim, and squash runs of blank lines to one, so a message never becomes a tall empty bubble.
+    const t = text.trim().replace(/\n{3,}/g, '\n\n');
     if (!t || !canSendTo(conversationId, kind)) {
       return;
     }
@@ -377,6 +526,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         replyTo: reply,
         spoiler: opts?.spoiler || undefined,
         viewOnce: opts?.viewOnce || undefined,
+        viewSecs: opts?.viewOnce && opts.viewSecs ? opts.viewSecs : undefined,
+        caption: cleanCaption(opts?.caption),
+        album: opts?.album,
       },
       'sending',
     );
@@ -392,6 +544,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         r: toWire(reply),
         sp: opts?.spoiler ? 1 : undefined,
         vo: opts?.viewOnce ? 1 : undefined,
+        vs: opts?.viewOnce && opts.viewSecs ? opts.viewSecs : undefined,
+        c: cleanCaption(opts?.caption),
+        al: opts?.album,
       };
       track(set, id, conversationId, kind, head);
       await sendEvent(conversationId, kind, head);
@@ -433,7 +588,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const n = Math.max(1, Math.ceil(file.size / CHUNK_BYTES));
     // Notes to self never leave the phone.
     const self = kind === 'direct' && conversationId === selfKey();
-    addMine(set, {id, conversationId, convKind: kind, type: 'file', file: info, replyTo: opts?.reply}, self ? 'sent' : 'sending');
+    addMine(set, {id, conversationId, convKind: kind, type: 'file', file: info, replyTo: opts?.reply, caption: cleanCaption(opts?.caption)}, self ? 'sent' : 'sending');
     if (self) {
       return;
     }
@@ -444,6 +599,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       name: myName(),
       f: {n: file.name, s: file.size, m: file.mime, t: fkind, d: dur, th: thumb},
       n,
+      c: cleanCaption(opts?.caption),
       r: toWire(opts?.reply),
     };
     track(set, id, conversationId, kind, head);
@@ -481,11 +637,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setTyping: (conversationId, on) => {
-    if (
-      !useSettingsStore.getState().app.typingIndicator ||
-      conversationId === selfKey() ||
-      !usePairingStore.getState().isPaired(conversationId)
-    ) {
+    if (!useSettingsStore.getState().app.typingIndicator || conversationId === selfKey()) {
+      return;
+    }
+    const group = useGroupsStore.getState().get(conversationId);
+    if (!group && !usePairingStore.getState().isPaired(conversationId)) {
       return;
     }
     const now = Date.now();
@@ -494,24 +650,50 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
     lastTypingSent.set(conversationId, on ? now : 0);
-    try {
-      const me = getIdentity();
-      const {cipher, nonce} = boxTo(JSON.stringify({on}), conversationId, me.secretKey);
-      getMeshEngine()
-        .send({type: 'TYPING', recipient: conversationId, ttl: 4, payload: cipher, nonce})
-        .catch(() => undefined);
-    } catch {
-      /* unusable key: nothing to send to */
+    const me = getIdentity();
+    // One person: that person. A group: every other member (each copy sealed to that one person).
+    const to = group ? group.members.filter(k => k !== me.publicKey) : [conversationId];
+    for (const k of to) {
+      try {
+        const {cipher, nonce} = boxTo(JSON.stringify(group ? {on, g: conversationId} : {on}), k, me.secretKey);
+        getMeshEngine()
+          .send({type: 'TYPING', recipient: k, ttl: 4, payload: cipher, nonce})
+          .catch(() => undefined);
+      } catch {
+        /* unusable key: nothing to send to */
+      }
     }
   },
 
-  sendPoll: async (conversationId, kind, question, options) => {
+  sendPoll: async (conversationId, kind, question, options, settings) => {
     if (!canSendTo(conversationId, kind)) {
       return;
     }
     const id = newPacketId();
-    addMine(set, {id, conversationId, convKind: kind, type: 'poll', poll: {question, options}});
-    const event: ChatEvent = {k: 'poll', id, name: myName(), q: question, o: options};
+    const quiz = settings?.quiz !== undefined && settings.quiz >= 0 && settings.quiz < options.length ? settings.quiz : undefined;
+    const poll: PollData = {
+      question,
+      options,
+      multi: settings?.multi && quiz === undefined ? true : undefined,
+      anon: settings?.anon ? true : undefined,
+      quiz,
+      explain: quiz !== undefined && settings?.explain?.trim() ? settings.explain.trim().slice(0, 200) : undefined,
+      closesAt: settings?.closesAt ?? (settings?.closeInMs ? Date.now() + settings.closeInMs : undefined),
+    };
+    addMine(set, {id, conversationId, convKind: kind, type: 'poll', poll});
+    const event: ChatEvent = {k: 'poll', id, name: myName(), q: question, o: options, m: poll.multi ? 1 : undefined, an: poll.anon ? 1 : undefined, qz: poll.quiz, ex: poll.explain, cl: poll.closesAt};
+    track(set, id, conversationId, kind, event);
+    await sendEvent(conversationId, kind, event);
+  },
+
+  sendContact: async (conversationId, kind, person) => {
+    if (!canSendTo(conversationId, kind) || !validKey(person.key)) {
+      return;
+    }
+    const name = person.name.trim().slice(0, 40) || 'Pulse user';
+    const id = newPacketId();
+    addMine(set, {id, conversationId, convKind: kind, type: 'contact', contact: {key: person.key, name}});
+    const event: ChatEvent = {k: 'card', id, name: myName(), pk: person.key, pn: name};
     track(set, id, conversationId, kind, event);
     await sendEvent(conversationId, kind, event);
   },
@@ -523,7 +705,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   vote: async (conversationId, kind, pollId, opt) => {
-    applyVote(set, get, pollId, opt, 'You');
+    if (!applyVote(set, get, pollId, opt, 'You')) {
+      return; // closed, already answered (quiz) or not a real option: nothing to send
+    }
     await sendEvent(conversationId, kind, {k: 'vote', mid: pollId, opt, name: myName()});
   },
 
@@ -538,6 +722,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         outbox,
       };
     });
+    clearPin(conversationId, messageId);
     if (gone) {
       forgetMessageMedia(gone);
     } else {
@@ -547,6 +732,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   deleteMany: (conversationId, messageIds) => {
     const ids = new Set(messageIds);
+    ids.forEach(id => clearPin(conversationId, id));
     const goneMsgs = (get().byConversation[conversationId] ?? []).filter(m => ids.has(m.id));
     set(state => {
       const outbox = {...state.outbox};
@@ -601,6 +787,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setDisappear: (conversationId, kind, ms) => {
     usePrefsStore.getState().patch(conversationId, {disappear: ms || undefined});
+    if (ms) {
+      clearPin(conversationId); // a pinned copy must not outlive the timer
+    }
+    if (isSecretId(conversationId)) {
+      useSecretStore.getState().setTimer(conversationId, ms);
+    }
     const note: ChatEvent = {k: 'dis', ms};
     quietSend(conversationId, kind, note);
     setTimeout(() => quietSend(conversationId, kind, note), 3000);
@@ -628,13 +820,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return true;
   },
 
-  forwardMessage: async (toId, toKind, msg) => {
+  pinMessage: (conversationId, kind, pin) => {
+    const prefsApi = usePrefsStore.getState();
+    if (kind !== 'direct' || isSecretId(conversationId) || prefsApi.prefs[conversationId]?.disappear) {
+      return 'no';
+    }
+    const t = pinText(pin.text);
+    if (!pin.mid || !t) {
+      return 'no';
+    }
+    const now = prefsApi.prefs[conversationId]?.pinMsgs ?? [];
+    if (now.some(p => p.mid === pin.mid)) {
+      return 'ok'; // already pinned
+    }
+    if (now.length >= MAX_PINS) {
+      return 'full';
+    }
+    sharePins(conversationId, kind, [...now, {mid: pin.mid, from: pin.mine ? selfKey() : conversationId, t, by: selfKey()}]);
+    return 'ok';
+  },
+
+  unpinMessage: (conversationId, kind, mid) => {
+    const now = usePrefsStore.getState().prefs[conversationId]?.pinMsgs ?? [];
+    if (kind === 'direct' && now.some(p => p.mid === mid)) {
+      sharePins(conversationId, kind, now.filter(p => p.mid !== mid));
+    }
+  },
+
+  forwardMessage: async (toId, toKind, msg, album) => {
+    if (isSecretId(msg.conversationId)) {
+      return; // secret messages can't be forwarded
+    }
     if (msg.type === 'text' && msg.text) {
       await get().sendText(toId, toKind, msg.text);
     } else if (msg.type === 'image' && msg.image) {
-      await get().sendImage(toId, toKind, msg.image);
+      await get().sendImage(toId, toKind, msg.image, undefined, album ? {album} : undefined);
     } else if (msg.type === 'poll' && msg.poll) {
-      await get().sendPoll(toId, toKind, msg.poll.question, msg.poll.options);
+      await get().sendPoll(toId, toKind, msg.poll.question, msg.poll.options, {multi: msg.poll.multi, anon: msg.poll.anon, quiz: msg.poll.quiz, explain: msg.poll.explain});
+    } else if (msg.type === 'contact' && msg.contact) {
+      await get().sendContact(toId, toKind, msg.contact);
     } else if (msg.type === 'file' && msg.file?.done && msg.file.path) {
       const copy = await mediaFiles.copy(msg.file.path);
       if (copy) {
@@ -670,8 +894,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   markSeen: (conversationId, kind) => {
-    if (kind !== 'direct') {
-      return; // read receipts only for 1:1
+    if (kind !== 'direct' && kind !== 'group') {
+      return;
     }
     const msgs = get().byConversation[conversationId] ?? [];
     const toAck = msgs.filter(m => !m.mine && !m.ackedSeen && m.progress === undefined);
@@ -694,7 +918,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
     for (const m of toAck) {
-      quietSend(conversationId, kind, {k: 'receipt', mid: m.id});
+      // In a group, a receipt goes back to the one who wrote the message.
+      quietSend(conversationId, kind, {k: 'receipt', mid: m.id}, kind === 'group' ? [m.from] : undefined);
     }
   },
 
@@ -720,7 +945,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 function addMine(
   set: Setter,
   partial: Pick<ChatMessage, 'id' | 'conversationId' | 'convKind' | 'type'> &
-    Partial<Pick<ChatMessage, 'text' | 'image' | 'poll' | 'replyTo' | 'spoiler' | 'viewOnce' | 'file'>>,
+    Partial<Pick<ChatMessage, 'text' | 'image' | 'poll' | 'replyTo' | 'spoiler' | 'viewOnce' | 'viewSecs' | 'caption' | 'album' | 'file' | 'contact'>>,
   status: ChatMessage['status'] = 'sent',
 ) {
   const msg: ChatMessage = {
@@ -756,10 +981,25 @@ function setMedia(
 
 /** Remember a direct message until its delivery receipt comes back. */
 function track(set: Setter, mid: string, conversationId: string, kind: ConversationKind, event: ChatEvent) {
-  if (kind !== 'direct' || conversationId === selfKey()) {
-    return; // group traffic is broadcast; there's no single receiver to wait for
-  }
   const now = Date.now();
+  if (kind === 'group') {
+    // Wait for each member who has joined (they hold the key) to confirm; resend only to those who haven't.
+    const group = useGroupsStore.getState().get(conversationId);
+    const pending = (group?.joined ?? []).filter(k => k !== selfKey());
+    if (pending.length === 0) {
+      return;
+    }
+    set(state => ({
+      outbox: {
+        ...state.outbox,
+        [mid]: {mid, conversationId, kind, event, tries: 0, nextAt: now + BACKOFF_S[0] * 1000, createdAt: now, pending},
+      },
+    }));
+    return;
+  }
+  if (kind !== 'direct' || conversationId === selfKey()) {
+    return;
+  }
   set(state => ({
     outbox: {
       ...state.outbox,
@@ -768,7 +1008,8 @@ function track(set: Setter, mid: string, conversationId: string, kind: Conversat
   }));
 }
 
-async function sendEvent(conversationId: string, kind: ConversationKind, event: ChatEvent) {
+/** `to`: in a group, only these members (a resend, or a receipt that goes back to just the sender). Default: everybody. */
+async function sendEvent(conversationId: string, kind: ConversationKind, event: ChatEvent, to?: string[]) {
   if (kind === 'direct' && conversationId === selfKey()) {
     return; // notes to self stay on this phone
   }
@@ -778,26 +1019,44 @@ async function sendEvent(conversationId: string, kind: ConversationKind, event: 
   const id = newPacketId();
 
   if (kind === 'direct') {
-    const {cipher, nonce} = boxTo(json, conversationId, me.secretKey);
+    // Forward-secret session when there is one; the older static-key box only
+    // until the session is set up (a person on an older Pulse never gets one).
+    const secret = isSecretId(conversationId) ? useSecretStore.getState().chats[conversationId] : undefined;
+    if (isSecretId(conversationId) && !secret) {
+      return; // that secret chat no longer exists
+    }
+    const peerKey = secret ? secret.peerKey : conversationId;
+    const sealed = e2ee.encrypt(conversationId, json);
+    let cipher: string;
+    let nonce: string;
+    if (sealed) {
+      cipher = sealed;
+      nonce = 'dr1';
+    } else if (secret) {
+      return; // keys not ready: the outbox tries again later; never downgrade a secret chat
+    } else {
+      ({cipher, nonce} = boxTo(json, peerKey, me.secretKey));
+      ensureSession(peerKey);
+    }
     // The Bluetooth/Wi-Fi mesh (Nearby) is the reliable, ordered path — it
     // handles delivery + dedup, so send there always. When the peer is also on
     // the same Wi-Fi LAN we ALSO fire it over TCP for a faster arrival; both
     // carry the same packet id, so the receiver dedups whichever loses the race.
-    await engine.send({type: 'CHAT', id, recipient: conversationId, ttl: config.defaultTtl, payload: cipher, nonce});
-    if (lanManager.isOnLan(conversationId)) {
+    await engine.send({type: 'CHAT', id, recipient: peerKey, ttl: config.defaultTtl, payload: cipher, nonce});
+    if (lanManager.isOnLan(peerKey)) {
       const lanPacket: MeshPacket = {
         id,
         type: 'CHAT',
         ttl: config.defaultTtl,
         origin: me.publicKey,
-        recipient: conversationId,
+        recipient: peerKey,
         payload: cipher,
         nonce,
         originTimestamp: Date.now(),
         hops: 0,
       };
       try {
-        lanManager.sendTo(conversationId, lanPacket);
+        lanManager.sendTo(peerKey, lanPacket);
       } catch {
         /* LAN best-effort only; the mesh send above is the guarantee */
       }
@@ -807,15 +1066,24 @@ async function sendEvent(conversationId: string, kind: ConversationKind, event: 
     if (!group) {
       return;
     }
+    // In an announcement group only admins can send new messages (receipts, reactions… still go).
+    if (CONTENT_EVENTS.includes(event.k) && !canSendIn(group, me.publicKey)) {
+      return;
+    }
     const {cipher, nonce} = sealGroup(json, group.key);
-    await engine.send({type: 'CHAT', id, ttl: config.defaultTtl, payload: b64({g: conversationId, c: cipher, n: nonce})});
+    const payload = b64({g: conversationId, c: cipher, n: nonce});
+    // One addressed copy for each other member. A packet with a named receiver travels over Bluetooth/Wi-Fi AND the
+    // internet, and waits for people who are away. (A broadcast with no receiver only ever reached phones in radio range.)
+    // Each copy has its own packet id; the message id inside is what tells a receiver it already has the message.
+    const others = (to ?? group.members).filter(k => k !== me.publicKey && group.members.includes(k));
+    await Promise.all(others.map(k => engine.send({type: 'CHAT', recipient: k, ttl: config.defaultTtl, payload})));
   }
   // 'nearby' has no open broadcast room — nothing to send.
 }
 
 /** Fire-and-forget send: a background receipt/resend that fails must never surface as an unhandled error. */
-function quietSend(conversationId: string, kind: ConversationKind, event: ChatEvent): void {
-  sendEvent(conversationId, kind, event).catch(() => undefined);
+function quietSend(conversationId: string, kind: ConversationKind, event: ChatEvent, to?: string[]): void {
+  sendEvent(conversationId, kind, event, to).catch(() => undefined);
 }
 
 function senderName(origin: string, fallback?: string): string {
@@ -831,7 +1099,45 @@ function senderName(origin: string, fallback?: string): string {
 function ackDelivered(conversationId: string, convKind: ConversationKind, mid: string) {
   if (convKind === 'direct') {
     quietSend(conversationId, convKind, {k: 'dlv', mid});
+  } else if (convKind === 'group') {
+    // In a group the confirmation goes back to the message's sender only (not to the whole group).
+    const m = (useChatStore.getState().byConversation[conversationId] ?? []).find(x => x.id === mid);
+    if (m && !m.mine) {
+      quietSend(conversationId, convKind, {k: 'dlv', mid}, [m.from]);
+    }
   }
+}
+
+/**
+ * A member confirmed (d) or read (s) one of MY group messages. The message shows "delivered" once everyone who has joined
+ * has it, and "seen" once everyone has read it; Message info lists who and when.
+ */
+function ackGroup(set: Setter, get: Getter, conversationId: string, mid: string, who: string, field: 'd' | 's', hops: number) {
+  const group = useGroupsStore.getState().get(conversationId);
+  const mine = (get().byConversation[conversationId] ?? []).find(m => m.id === mid && m.mine);
+  if (!group || !mine || !group.members.includes(who)) {
+    return;
+  }
+  const at = Date.now();
+  const before = mine.acks?.[who];
+  const acks = {...mine.acks, [who]: {...before, d: before?.d ?? at, ...(field === 's' ? {s: before?.s ?? at} : {})}};
+  const others = group.joined.filter(k => k !== selfKey());
+  const delivered = others.length > 0 && others.every(k => acks[k]?.d);
+  const seen = others.length > 0 && others.every(k => acks[k]?.s);
+  set(state => {
+    const outbox = {...state.outbox};
+    const item = outbox[mid];
+    if (item?.pending) {
+      const left = item.pending.filter(k => k !== who);
+      if (left.length === 0) {
+        delete outbox[mid];
+      } else {
+        outbox[mid] = {...item, pending: left};
+      }
+    }
+    return {outbox};
+  });
+  setMedia(set, conversationId, mid, {acks, status: seen ? 'seen' : delivered ? 'delivered' : 'sent', hops, ...(delivered ? {deliveredAt: at} : {}), ...(seen ? {seenAt: at} : {})});
 }
 
 /** Raise an Android notification for a freshly arrived message. */
@@ -850,6 +1156,8 @@ function notifyInbound(get: Getter, msg: ChatMessage, origin: string) {
     text: previewOf(msg),
     avatar: usePeersStore.getState().peers[origin]?.avatar ?? prefs.profiles[origin]?.avatar,
     activeConversation: get().active,
+    // "@Maya" in a group: it notifies even if the group is muted
+    mention: msg.convKind === 'group' && !!msg.text && mentions(msg.text, myName()),
   });
 }
 
@@ -863,7 +1171,7 @@ function applyEvent(
   hops: number,
 ) {
   if (
-    (event.k === 'msg' || event.k === 'img' || event.k === 'mbeg' || event.k === 'fbeg' || event.k === 'poll') &&
+    (event.k === 'msg' || event.k === 'img' || event.k === 'mbeg' || event.k === 'fbeg' || event.k === 'poll' || event.k === 'card') &&
     get().tombstones[`${origin}:${event.id}`]
   ) {
     return; // the sender already removed this one
@@ -886,9 +1194,10 @@ function applyEvent(
       expiresAt: expiresFor(conversationId),
           hops,
         };
+        const typingKey = convKind === 'group' ? `${conversationId}:${origin}` : origin;
         set(state => ({
           byConversation: append(state, msg),
-          typing: state.typing[origin] ? {...state.typing, [origin]: 0} : state.typing,
+          typing: state.typing[typingKey] ? {...state.typing, [typingKey]: 0} : state.typing,
         }));
         notifyInbound(get, msg, origin);
       }
@@ -961,9 +1270,14 @@ function applyEvent(
         hops,
         spoiler: event.sp ? true : undefined,
         viewOnce: event.vo ? true : undefined,
+        viewSecs: event.vo && typeof event.vs === 'number' && event.vs > 0 ? Math.min(300, Math.round(event.vs)) : undefined,
+        caption: cleanCaption(event.c),
+        album: cleanAlbum(event.al),
       };
       set(state => ({byConversation: append(state, placeholder)}));
-      notifyInbound(get, placeholder, origin);
+      if (!placeholder.album || placeholder.album.i === 0) {
+        notifyInbound(get, placeholder, origin); // one notification for a whole album, not one per photo
+      }
       if (buf.received >= buf.total) {
         finishMedia(set, event.id, buf);
       }
@@ -1043,6 +1357,7 @@ function applyEvent(
         from: origin,
         fromName: senderName(origin, event.name),
         file: {name: fi.n, size: fi.s, mime: fi.m, kind: fi.t, dur: fi.d, thumb: fi.th},
+        caption: cleanCaption(event.c),
         replyTo: fromWire(event.r),
         timestamp: Date.now(),
         mine: false,
@@ -1124,10 +1439,35 @@ function applyEvent(
           type: 'poll',
           from: origin,
           fromName: senderName(origin, event.name),
-          poll: {question: event.q, options: event.o},
+          poll: cleanPoll(event),
           timestamp: Date.now(),
           mine: false,
       expiresAt: expiresFor(conversationId),
+          hops,
+        };
+        set(state => ({byConversation: append(state, msg)}));
+        notifyInbound(get, msg, origin);
+      }
+      ackDelivered(conversationId, convKind, event.id);
+      break;
+    }
+    case 'card': {
+      if (typeof event.pk !== 'string' || !validKey(event.pk)) {
+        break; // not a real key: ignore
+      }
+      const isNew = !hasMessage(get, conversationId, event.id);
+      if (isNew) {
+        const msg: ChatMessage = {
+          id: event.id,
+          conversationId,
+          convKind,
+          type: 'contact',
+          from: origin,
+          fromName: senderName(origin, event.name),
+          contact: {key: event.pk, name: (typeof event.pn === 'string' ? event.pn.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) : '') || 'Pulse user'},
+          timestamp: Date.now(),
+          mine: false,
+          expiresAt: expiresFor(conversationId),
           hops,
         };
         set(state => ({byConversation: append(state, msg)}));
@@ -1146,6 +1486,10 @@ function applyEvent(
       // Reached their phone. Stop retrying and show the double tick.
       const mine = (get().byConversation[conversationId] ?? []).find(m => m.id === event.mid && m.mine);
       if (!mine) {
+        break;
+      }
+      if (convKind === 'group') {
+        ackGroup(set, get, conversationId, event.mid, origin, 'd', hops);
         break;
       }
       set(state => {
@@ -1181,6 +1525,27 @@ function applyEvent(
       if (target) {
         forgetMessageMedia(target);
       }
+      if (convKind === 'direct' && usePrefsStore.getState().prefs[conversationId]?.pinMsgs?.some(p => p.mid === event.mid && p.from === origin)) {
+        clearPin(conversationId, event.mid); // the pinned message was taken back
+      }
+      break;
+    }
+    case 'pin': {
+      // Only one-to-one chats, never secret chats or ones that make messages vanish. "by" is who really sent this note.
+      if (convKind !== 'direct' || isSecretId(conversationId) || usePrefsStore.getState().prefs[conversationId]?.disappear) {
+        break;
+      }
+      if (!Array.isArray(event.ps)) {
+        break;
+      }
+      const list: {mid: string; from: string; t: string; by: string}[] = [];
+      for (const p of event.ps) {
+        const t = pinText(p?.t);
+        if (p && typeof p.mid === 'string' && p.mid && p.mid.length <= 80 && t && !list.some(x => x.mid === p.mid) && list.length < MAX_PINS) {
+          list.push({mid: p.mid, from: p.w === 1 ? origin : selfKey(), t, by: origin});
+        }
+      }
+      usePrefsStore.getState().patch(conversationId, {pinMsgs: list.length ? list : undefined});
       break;
     }
     case 'opn': {
@@ -1193,8 +1558,14 @@ function applyEvent(
       break;
     }
     case 'dis': {
-      if (DISAPPEAR_CHOICES.includes(event.ms)) {
+      if (DISAPPEAR_CHOICES.includes(event.ms) || (isSecretId(conversationId) && SECRET_TIMERS.includes(event.ms))) {
+        if (isSecretId(conversationId)) {
+          useSecretStore.getState().setTimer(conversationId, event.ms);
+        }
         usePrefsStore.getState().patch(conversationId, {disappear: event.ms || undefined});
+        if (event.ms) {
+          clearPin(conversationId);
+        }
       }
       break;
     }
@@ -1205,7 +1576,17 @@ function applyEvent(
       }
       break;
     }
+    case 'hi':
+      if (isSecretId(conversationId)) {
+        useSecretStore.getState().markReady(conversationId);
+      }
+      break;
     case 'receipt':
+      if (convKind === 'group') {
+        // One member read my group message: noted per person; "seen" once everyone has.
+        ackGroup(set, get, conversationId, event.mid, origin, 's', hops);
+        break;
+      }
       // Mark my matching message as seen — and it obviously arrived.
       set(state => {
         const next: Record<string, ChatMessage[]> = {};
@@ -1270,15 +1651,66 @@ function applyReaction(set: Setter, get: Getter, messageId: string, emoji: strin
   set(state => ({reactions: {...state.reactions, [messageId]: next}}));
 }
 
-function applyVote(set: Setter, get: Getter, pollId: string, opt: number, voter: string) {
+/** A poll that came over the wire, made safe: sensible lengths and counts, flags only if they make sense. */
+function cleanPoll(e: {q: string; o: string[]; m?: 1; an?: 1; qz?: number; ex?: string; cl?: number}): PollData {
+  const options = (Array.isArray(e.o) ? e.o : []).filter(x => typeof x === 'string').slice(0, 10).map(x => x.slice(0, 60));
+  const quiz = Number.isInteger(e.qz) && (e.qz as number) >= 0 && (e.qz as number) < options.length ? (e.qz as number) : undefined;
+  const now = Date.now();
+  return {
+    question: String(e.q ?? '').slice(0, 140),
+    options,
+    multi: e.m && quiz === undefined ? true : undefined,
+    anon: e.an ? true : undefined,
+    quiz,
+    explain: quiz !== undefined && typeof e.ex === 'string' && e.ex.trim() ? e.ex.trim().slice(0, 200) : undefined,
+    closesAt: typeof e.cl === 'number' && e.cl > now - 86_400_000 && e.cl < now + 31 * 86_400_000 ? Math.round(e.cl) : undefined,
+  };
+}
+
+function findPoll(get: Getter, pollId: string): PollData | undefined {
+  for (const list of Object.values(get().byConversation)) {
+    const m = list.find(x => x.id === pollId);
+    if (m?.poll) {
+      return m.poll;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * One vote, by the poll's own rules. Single answer: a new pick replaces the old one. Multiple answers: tapping toggles.
+ * Quiz: one answer, final. Closed or not a real option: ignored. Returns whether it counted.
+ */
+function applyVote(set: Setter, get: Getter, pollId: string, opt: number, voter: string): boolean {
+  const def = findPoll(get, pollId);
+  if (def) {
+    if (!Number.isInteger(opt) || opt < 0 || opt >= def.options.length) {
+      return false;
+    }
+    if (def.closesAt && Date.now() > def.closesAt) {
+      return false;
+    }
+  }
   const poll = get().votes[pollId] ?? {};
-  // Remove voter from all options, then add to chosen (one vote per person).
+  const had = Object.values(poll).some(v => v.includes(voter));
+  if (def?.quiz !== undefined && had) {
+    return false; // a quiz answer is final
+  }
   const next: Record<number, string[]> = {};
   for (const [k, voters] of Object.entries(poll)) {
-    next[Number(k)] = voters.filter(v => v !== voter);
+    next[Number(k)] = voters;
   }
-  next[opt] = [...(next[opt] ?? []), voter];
+  if (def?.multi) {
+    const cur = next[opt] ?? [];
+    next[opt] = cur.includes(voter) ? cur.filter(v => v !== voter) : [...cur, voter];
+  } else {
+    for (const k of Object.keys(next)) {
+      next[Number(k)] = next[Number(k)].filter(v => v !== voter);
+    }
+    next[opt] = [...(next[opt] ?? []), voter];
+  }
   set(state => ({votes: {...state.votes, [pollId]: next}}));
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1403,7 +1835,9 @@ function startBackgroundWork(set: Setter, get: Getter) {
           return {outbox};
         });
         const cur = (get().byConversation[item.conversationId] ?? []).find(m => m.id === item.mid);
-        if (cur && cur.status !== 'delivered' && cur.status !== 'seen') {
+        // A group message that at least somebody confirmed is not a failure, even if others never came back.
+        const reachedSomeone = item.kind === 'group' && !!cur?.acks && Object.keys(cur.acks).length > 0;
+        if (cur && cur.status !== 'delivered' && cur.status !== 'seen' && !reachedSomeone) {
           setMedia(set, item.conversationId, item.mid, {status: 'failed'});
         }
         continue;
@@ -1418,7 +1852,7 @@ function startBackgroundWork(set: Setter, get: Getter) {
           ? {...state.outbox, [item.mid]: {...item, tries, nextAt: now + wait}}
           : state.outbox,
       }));
-      quietSend(item.conversationId, item.kind, item.event);
+      quietSend(item.conversationId, item.kind, item.event, item.pending);
     }
     // Disappearing messages: remove what has expired (starred messages are kept).
     const byConv = get().byConversation;
@@ -1457,7 +1891,25 @@ function startBackgroundWork(set: Setter, get: Getter) {
     set(state => {
       const outbox = {...state.outbox};
       for (const item of items) {
-        if (arrived.includes(item.conversationId) && item.nextAt > soon) {
+        if ((arrived.includes(item.conversationId) || item.pending?.some(k => arrived.includes(k))) && item.nextAt > soon) {
+          outbox[item.mid] = {...item, nextAt: soon};
+        }
+      }
+      return {outbox};
+    });
+  });
+
+  // A direct internet link to someone just opened: send what is waiting for them now.
+  useNetStore.subscribe((s, prev) => {
+    const opened = s.linked.filter(k => !prev.linked.includes(k));
+    if (opened.length === 0) {
+      return;
+    }
+    const soon = Date.now() + 500;
+    set(state => {
+      const outbox = {...state.outbox};
+      for (const item of Object.values(state.outbox)) {
+        if ((opened.includes(item.conversationId) || item.pending?.some(k => opened.includes(k))) && item.nextAt > soon) {
           outbox[item.mid] = {...item, nextAt: soon};
         }
       }

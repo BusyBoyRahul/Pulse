@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useState} from 'react';
 import {Pressable, StyleSheet, View} from 'react-native';
 import {colors, spacing} from '@/theme/theme';
@@ -60,10 +61,10 @@ export function LabelSheet({visible, onClose, current, onPick, title = 'Label'}:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   row: {flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md},
   name: {flex: 1},
   new: {marginTop: spacing.lg},
-});
+}));
 
 export default LabelSheet;

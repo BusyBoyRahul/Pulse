@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect, useState} from 'react';
 import {Pressable, StyleSheet, View} from 'react-native';
 import {colors, spacing} from '@/theme/theme';
@@ -108,7 +109,7 @@ export function PinPad({title, subtitle, error, submitLabel = 'Continue', resetK
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: {flex: 1, backgroundColor: colors.bg, justifyContent: 'space-between', paddingVertical: spacing.xxl, paddingHorizontal: spacing.xl},
   head: {alignItems: 'center', gap: spacing.sm, marginTop: spacing.xl},
   title: {marginTop: spacing.sm},
@@ -122,7 +123,7 @@ const styles = StyleSheet.create({
   keyDown: {backgroundColor: colors.surfaceHover},
   keyTxt: {fontSize: 28, lineHeight: 34},
   footer: {alignItems: 'center', marginTop: spacing.md},
-  submit: {height: 54, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center'},
-});
+  submit: {height: 54, borderRadius: 27, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center'},
+}));
 
 export default PinPad;

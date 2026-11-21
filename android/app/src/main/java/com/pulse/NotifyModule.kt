@@ -10,6 +10,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
@@ -105,7 +107,10 @@ object NotifyHelper {
   const val CH_CALLS = "pulse_calls_v2"
   const val CH_REQUESTS = "pulse_requests"
   const val CH_TRANSFERS = "pulse_transfers"
-  const val CH_MESH = "pulse_mesh"
+  // The quiet channel for the background notice: MIN importance = no sound, no status-bar icon, no pop-up.
+  // (Android cannot change the importance of an existing channel, so it has a new id and the old one is removed.)
+  const val CH_MESH = "pulse_mesh_quiet"
+  private const val CH_MESH_OLD = "pulse_mesh"
   const val CH_CALL_ONGOING = "pulse_call_ongoing"
   const val INCOMING_CALL_ID = 4712
   const val ONGOING_ID = 4711
@@ -153,8 +158,12 @@ object NotifyHelper {
     make(CH_TRANSFERS, "Photo transfers", NotificationManager.IMPORTANCE_LOW, "Progress of photos being sent or received") {
       setShowBadge(false)
     }
-    make(CH_MESH, "Mesh relay", NotificationManager.IMPORTANCE_LOW, "Shown while Pulse is relaying for people nearby") {
+    if (mgr.getNotificationChannel(CH_MESH_OLD) != null) mgr.deleteNotificationChannel(CH_MESH_OLD)
+    make(CH_MESH, "Background", NotificationManager.IMPORTANCE_MIN, "Keeps Pulse running quietly so messages arrive when the app is closed") {
       setShowBadge(false)
+      setSound(null, null)
+      enableVibration(false)
+      lockscreenVisibility = Notification.VISIBILITY_SECRET
     }
     make(CH_CALL_ONGOING, "Ongoing call", NotificationManager.IMPORTANCE_LOW, "Shown while you're on a Pulse call") {
       setShowBadge(false)
@@ -333,7 +342,7 @@ object NotifyHelper {
   }
 
   /** The ring for an incoming call: ringtone, vibration, Answer / Decline. */
-  fun showIncomingCall(ctx: Context, name: String) {
+  fun showIncomingCall(ctx: Context, name: String, video: Boolean = false) {
     ensureChannels(ctx)
     val tap = mapOf("action" to "openCall", "id" to INCOMING_CALL_ID.toString(), "kind" to "call", "title" to name)
     val answer = mapOf("action" to "answer", "id" to INCOMING_CALL_ID.toString(), "kind" to "call", "title" to name)
@@ -343,7 +352,7 @@ object NotifyHelper {
             .setSmallIcon(R.drawable.ic_stat_pulse)
             .setColor(ACCENT)
             .setContentTitle(name)
-            .setContentText("Incoming Pulse call")
+            .setContentText(if (video) "Incoming Pulse video call" else "Incoming Pulse call")
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -351,9 +360,14 @@ object NotifyHelper {
             .setAutoCancel(false)
             .setTimeoutAfter(45_000)
             .setContentIntent(openApp(ctx, INCOMING_CALL_ID, tap))
+            // Rings over the lock screen and wakes the phone, like a normal call (needs the full-screen-notification permission).
+            .setFullScreenIntent(openApp(ctx, INCOMING_CALL_ID * 31 + 3, tap), true)
             .addAction(NotificationCompat.Action.Builder(0, "Decline", broadcast(ctx, INCOMING_CALL_ID * 31 + 1, decline)).build())
             .addAction(NotificationCompat.Action.Builder(0, "Answer", openApp(ctx, INCOMING_CALL_ID * 31 + 2, answer)).build())
             .build()
+    // A real ring: the ringtone and vibration keep repeating until the call is answered, declined or gone (a normal
+    // notification would sound only once).
+    n.flags = n.flags or Notification.FLAG_INSISTENT
     try {
       NotificationManagerCompat.from(ctx).notify(INCOMING_CALL_ID, n)
     } catch (_: SecurityException) {}
@@ -461,6 +475,23 @@ class NotifyModule(private val ctx: ReactApplicationContext) : ReactContextBaseJ
     }
   }
 
+  /**
+   * Colours the strip behind the system navigation bar. A bottom sheet cannot draw over that strip (the
+   * pop-up window stops above it), so while a sheet is open it is tinted to match the sheet and the sheet
+   * looks like it reaches the bottom edge.
+   */
+  @ReactMethod
+  fun setWindowColor(hex: String) {
+    val act = currentActivity ?: return
+    act.runOnUiThread {
+      try {
+        val c = Color.parseColor(hex)
+        act.window.setBackgroundDrawable(ColorDrawable(c))
+        act.window.navigationBarColor = c
+      } catch (_: Exception) {}
+    }
+  }
+
   @ReactMethod
   fun isBatteryUnrestricted(promise: Promise) {
     promise.resolve(
@@ -474,17 +505,10 @@ class NotifyModule(private val ctx: ReactApplicationContext) : ReactContextBaseJ
   /** Asks Android to let Pulse keep running in the background (so it can relay). */
   @ReactMethod
   fun requestBatteryUnrestricted() {
-    val first =
-        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            .setData(Uri.parse("package:${ctx.packageName}"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // The system "battery optimisation" list (no special permission needed): the person picks Pulse → Don't optimise.
     try {
-      ctx.startActivity(first)
-    } catch (_: Exception) {
-      try {
-        ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      } catch (_: Exception) {}
-    }
+      ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: Exception) {}
   }
 
   @ReactMethod fun addListener(eventName: String) {}

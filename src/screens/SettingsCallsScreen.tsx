@@ -1,10 +1,10 @@
+import {themedStyles} from '@/theme/themed';
 import React from 'react';
-import {Linking, StyleSheet} from 'react-native';
+import {StyleSheet} from 'react-native';
 
 import {Screen, Txt, SettingRow, SettingGroup, SettingLabel} from '@/components';
 import {spacing} from '@/theme/theme';
 import {useSettingsStore} from '@/store/settingsStore';
-import {notifier} from '@/services/notifier';
 
 export default function SettingsCallsScreen() {
   const app = useSettingsStore(s => s.app);
@@ -20,7 +20,6 @@ export default function SettingsCallsScreen() {
           subtitle={app.allowCalls ? 'People you’re connected to can ring you' : 'All calls are declined automatically'}
           toggle={{value: app.allowCalls, onChange: v => setApp({allowCalls: v})}}
         />
-        <SettingRow icon="phone" title="Call ringtone" subtitle="Choose the sound in Android settings" onPress={() => notifier.openSystemSettings('calls')} />
       </SettingGroup>
 
       <SettingLabel>DURING A CALL</SettingLabel>
@@ -32,18 +31,13 @@ export default function SettingsCallsScreen() {
         />
       </SettingGroup>
 
-      <SettingLabel>PERMISSIONS</SettingLabel>
-      <SettingGroup>
-        <SettingRow icon="mic" title="Microphone" subtitle="Needed to talk. Manage it in Android settings" onPress={() => Linking.openSettings()} />
-      </SettingGroup>
-
       <Txt variant="caption" tone="muted" style={styles.note}>
-        Calls use Pulse, not phone numbers, and are end-to-end encrypted. They work over Bluetooth / Wi-Fi, including through other people’s phones. You can also allow or block calls for one person from their profile.
+        Calls are end-to-end encrypted.
       </Txt>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   note: {marginTop: spacing.lg, paddingHorizontal: spacing.xs},
-});
+}));

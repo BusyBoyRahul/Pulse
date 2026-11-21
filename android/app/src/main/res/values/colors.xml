@@ -1,0 +1,7 @@
+<resources>
+    <!-- Start-up background and system bars: match the app's light theme. -->
+    <color name="windowBg">#F4F5FB</color>
+    <color name="accent">#2F8BFF</color>
+    <!-- Launch cover: plain brand blue with the white logo. -->
+    <color name="launchBlue">#2F8BFF</color>
+</resources>

@@ -1,18 +1,19 @@
+import {themedStyles} from '@/theme/themed';
 import React from 'react';
 import {Image, StyleSheet, Text, View} from 'react-native';
-import Svg, {Defs, LinearGradient, Stop, Circle} from 'react-native-svg';
+import {colors} from '@/theme/theme';
 
-// Monochrome gradient pairs — every person gets a distinct steel/graphite tone,
-// stable per identity, so the list stays scannable without any colour.
+// Vivid gradient pairs. Every person gets one, stable per identity, so a long
+// list stays easy to scan — independent of the chosen accent.
 const GRADIENTS: [string, string][] = [
-  ['#5A5A62', '#26262A'],
-  ['#6E6E76', '#2E2E33'],
-  ['#4A4A52', '#1C1C20'],
-  ['#808088', '#38383E'],
-  ['#3E3E45', '#17171A'],
-  ['#8E8E96', '#42424A'],
-  ['#55555D', '#202024'],
-  ['#74747C', '#303035'],
+  ['#7C5CFF', '#C25BFF'],
+  ['#2F8BFF', '#27D3F5'],
+  ['#12B981', '#7BE495'],
+  ['#FF6B5B', '#FFA85B'],
+  ['#F0457E', '#FF8FB1'],
+  ['#14B8C6', '#5EE2B5'],
+  ['#5B6CFF', '#8E5BFF'],
+  ['#F5A524', '#FFD36B'],
 ];
 
 function hash(s: string): number {
@@ -24,7 +25,11 @@ function hash(s: string): number {
 }
 
 function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const parts = name
+    .replace(/\(.*?\)/g, ' ') // "Maya (You)" → the initials of Maya
+    .split(/\s+/)
+    .map(w => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean);
   if (parts.length === 0) {
     return '?';
   }
@@ -40,33 +45,20 @@ type Props = {
   uri?: string | null;
   size?: number;
   ring?: boolean;
+  /** Small coloured dot at the corner (online / has a status). */
+  dot?: string;
 };
 
-export function Avatar({name, seed, uri, size = 44, ring = false}: Props) {
-  const [g1, g2] = GRADIENTS[hash(seed || name) % GRADIENTS.length];
+export function Avatar({name, seed, uri, size = 44, ring = false, dot}: Props) {
+  const [g1] = GRADIENTS[hash(seed || name) % GRADIENTS.length];
   const r = size / 2;
   const fontSize = Math.round(size * 0.38);
+  const dotSize = Math.max(10, Math.round(size * 0.27));
 
-  if (uri) {
-    return (
-      <Image
-        source={{uri}}
-        style={[{width: size, height: size, borderRadius: r}, ring && styles.ring]}
-      />
-    );
-  }
-
-  return (
-    <View style={[{width: size, height: size}, ring && [styles.ring, {borderRadius: r}]]}>
-      <Svg width={size} height={size}>
-        <Defs>
-          <LinearGradient id={`av-${g1}-${g2}`} x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={g1} />
-            <Stop offset="1" stopColor={g2} />
-          </LinearGradient>
-        </Defs>
-        <Circle cx={r} cy={r} r={r} fill={`url(#av-${g1}-${g2})`} />
-      </Svg>
+  const face = uri ? (
+    <Image source={{uri}} style={[{width: size, height: size, borderRadius: r}, ring && styles.ring]} />
+  ) : (
+    <View style={[{width: size, height: size, borderRadius: r, backgroundColor: g1}, ring && styles.ring]}>
       <View style={[StyleSheet.absoluteFill, styles.center]}>
         <Text
           allowFontScaling={false}
@@ -83,11 +75,33 @@ export function Avatar({name, seed, uri, size = 44, ring = false}: Props) {
       </View>
     </View>
   );
+
+  if (!dot) {
+    return face;
+  }
+  return (
+    <View style={{width: size, height: size}}>
+      {face}
+      <View
+        style={{
+          position: 'absolute',
+          right: -1,
+          bottom: -1,
+          width: dotSize,
+          height: dotSize,
+          borderRadius: dotSize / 2,
+          backgroundColor: dot,
+          borderWidth: 2,
+          borderColor: colors.bg,
+        }}
+      />
+    </View>
+  );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   center: {alignItems: 'center', justifyContent: 'center'},
-  ring: {borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)'},
-});
+  ring: {borderWidth: 2, borderColor: 'rgba(255,255,255,0.28)'},
+}));
 
 export default Avatar;

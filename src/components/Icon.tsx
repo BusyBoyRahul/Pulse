@@ -10,8 +10,26 @@ import {colors} from '@/theme/theme';
 export type IconName =
   | 'home'
   | 'chat'
+  | 'chatPlus'
+  | 'pulse'
+  | 'paperclip'
+  | 'scissors'
+  | 'clipboard'
+  | 'selectAll'
   | 'sos'
   | 'note'
+  | 'poll'
+  | 'spoiler'
+  | 'timer'
+  | 'folder'
+  | 'storage'
+  | 'rotate'
+  | 'arrowUpRight'
+  | 'arrowDownLeft'
+  | 'crop'
+  | 'text'
+  | 'brush'
+  | 'undo'
   | 'settings'
   | 'user'
   | 'users'
@@ -40,6 +58,7 @@ export type IconName =
   | 'relay'
   | 'info'
   | 'chevronDown'
+  | 'chevronUp'
   | 'more'
   | 'bellOff'
   | 'pin'
@@ -66,17 +85,51 @@ export type IconName =
   | 'video'
   | 'play'
   | 'pause'
-  | 'wallpaper';
+  | 'wallpaper'
+  | 'sun'
+  | 'palette'
+  | 'swap'
+  | 'userPlus'
+  | 'globe'
+  | 'qr'
+  | 'at'
+  | 'sparkles'
+  | 'status'
+  | 'archive'
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'code';
 
 type Shape = {p?: string[]; c?: [number, number, number][]; l?: [number, number, number, number][]};
 
 const ICONS: Record<IconName, Shape> = {
   home: {p: ['M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z']},
-  chat: {
-    p: ['M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z'],
+  chat: {p: ['M7.9 20A9 9 0 1 0 4 16.1L2 22z']},
+  paperclip: {p: ['m21.44 11.05-9.19 9.19a6.003 6.003 0 0 1-8.49-8.49l8.57-8.57A4.006 4.006 0 1 1 18 8.84l-8.59 8.57a2.002 2.002 0 0 1-2.83-2.83l8.49-8.48']},
+  scissors: {c: [[6, 6, 3], [6, 18, 3]], p: ['M20 4 8.12 15.88', 'M14.47 14.48 20 20', 'M8.12 8.12 12 12']},
+  clipboard: {p: ['M8 2h8a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z', 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2']},
+  selectAll: {p: ['M5 3a2 2 0 0 0-2 2', 'M19 3a2 2 0 0 1 2 2', 'M21 19a2 2 0 0 1-2 2', 'M5 21a2 2 0 0 1-2-2', 'M9 3h1', 'M9 21h1', 'M14 3h1', 'M14 21h1', 'M3 9v1', 'M21 9v1', 'M3 14v1', 'M21 14v1']},
+  pulse: {p: ['M2 12h4l2.5-7 4 14 3-9 1.5 2H22']},
+  chatPlus: {p: ['M7.9 20A9 9 0 1 0 4 16.1L2 22z', 'M8 12h8', 'M12 8v8']},
+  sos: {p: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4'], l: [[12, 17, 12.01, 17]]},
+  note: {p: ['M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z']},
+  poll: {p: ['M6 20v-8', 'M12 20V4', 'M18 20v-5']},
+  // a square of scattered dots: the "blurred until tapped" look
+  spoiler: {
+    p: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z'],
+    l: [[8, 8, 8.01, 8], [13, 7, 13.01, 7], [16.5, 11, 16.51, 11], [9, 12.5, 9.01, 12.5], [14, 16, 14.01, 16], [7.5, 17, 7.51, 17], [17, 17, 17.01, 17]],
   },
-  sos: {p: ['M10.3 4 3.3 18a2 2 0 0 0 1.7 3h14a2 2 0 0 0 1.7-3l-7-14a2 2 0 0 0-3.4 0z', 'M12 9v4'], c: [[12, 17, 0.6]]},
-  note: {p: ['M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'], c: [[12, 10, 3]]},
+  timer: {p: ['M10 2h4', 'M12 14l3-3'], c: [[12, 14, 8]]},
+  folder: {p: ['M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z']},
+  storage: {p: ['M3 14h18v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M5.5 3h13L21 14H3z'], l: [[7, 17.5, 7.01, 17.5]]},
+  crop: {p: ['M6 2v14a2 2 0 0 0 2 2h14', 'M18 22V8a2 2 0 0 0-2-2H2']},
+  text: {p: ['M4 7V4h16v3', 'M9 20h6', 'M12 4v16']},
+  brush: {p: ['M12 19l7-7 3 3-7 7-3-3z', 'M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z', 'M2 2l7.586 7.586']},
+  undo: {p: ['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13']},
+  arrowUpRight: {p: ['M7 17 17 7', 'M8 7h9v9']},
+  arrowDownLeft: {p: ['M17 7 7 17', 'M16 17H7V8']},
+  rotate: {p: ['M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8', 'M21 3v5h-5']},
   settings: {
     p: [
       'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
@@ -97,16 +150,14 @@ const ICONS: Record<IconName, Shape> = {
   shield: {p: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z']},
   camera: {p: ['M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z'], c: [[12, 13, 4]]},
   image: {p: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M21 15l-5-5L5 21'], c: [[8.5, 8.5, 1.5]]},
-  bell: {p: ['M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9', 'M13.7 21a2 2 0 0 1-3.4 0']},
-  radar: {p: ['M19.07 4.93A10 10 0 1 1 8 2.83', 'M12 12 8 8'], c: [[12, 12, 1]]},
+  bell: {p: ['M10.268 21a2 2 0 0 0 3.464 0', 'M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326']},
+  radar: {p: ['M16.247 7.761a6 6 0 0 1 0 8.478', 'M19.075 4.933a10 10 0 0 1 0 14.134', 'M4.925 19.067a10 10 0 0 1 0-14.134', 'M7.753 16.239a6 6 0 0 1 0-8.478'], c: [[12, 12, 2]]},
   lock: {p: ['M19 11H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2z', 'M7 11V7a5 5 0 0 1 10 0v4']},
   mapPin: {p: ['M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'], c: [[12, 10, 3]]},
   trash: {p: ['M3 6h18', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2']},
-  edit: {p: ['M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', 'M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z']},
+  edit: {p: ['M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', 'M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z']},
   phone: {
-    p: [
-      'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z',
-    ],
+    p: ['M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384'],
   },
   phoneOff: {
     p: [
@@ -134,7 +185,8 @@ const ICONS: Record<IconName, Shape> = {
   },
   info: {c: [[12, 12, 10]], l: [[12, 16, 12, 12], [12, 8, 12.01, 8]]},
   chevronDown: {p: ['m6 9 6 6 6-6']},
-  more: {c: [[5, 12, 0.9], [12, 12, 0.9], [19, 12, 0.9]]},
+  chevronUp: {p: ['m18 15-6-6-6 6']},
+  more: {c: [[12, 5, 0.9], [12, 12, 0.9], [12, 19, 0.9]]},
   bellOff: {
     p: ['M13.73 21a2 2 0 0 1-3.46 0', 'M18.63 13A17.89 17.89 0 0 1 18 8', 'M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14', 'M18 8a6 6 0 0 0-9.33-5'],
     l: [[1, 1, 23, 23]],
@@ -176,6 +228,23 @@ const ICONS: Record<IconName, Shape> = {
   video: {p: ['m22 8-6 4 6 4V8z', 'M14 6H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z']},
   play: {p: ['M6 4v16l14-8z']},
   pause: {l: [[8, 5, 8, 19], [16, 5, 16, 19]]},
+  sun: {
+    c: [[12, 12, 4]],
+    l: [[12, 2, 12, 4], [12, 20, 12, 22], [4.93, 4.93, 6.34, 6.34], [17.66, 17.66, 19.07, 19.07], [2, 12, 4, 12], [20, 12, 22, 12], [4.93, 19.07, 6.34, 17.66], [17.66, 6.34, 19.07, 4.93]],
+  },
+  palette: {p: ['M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z']},
+  swap: {p: ['m17 2 4 4-4 4', 'M3 11v-1a4 4 0 0 1 4-4h14', 'm7 22-4-4 4-4', 'M21 13v1a4 4 0 0 1-4 4H3']},
+  userPlus: {p: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'], c: [[9, 7, 4]], l: [[19, 8, 19, 14], [22, 11, 16, 11]]},
+  globe: {p: ['M2 12h20', 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'], c: [[12, 12, 10]]},
+  qr: {p: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h3v3h-3z', 'M20 14v3', 'M14 20h3', 'M20 20h1']},
+  at: {p: ['M16 12v1a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8'], c: [[12, 12, 4]]},
+  bold: {p: ['M6 4h8a4 4 0 0 1 0 8H6z', 'M6 12h9a4 4 0 0 1 0 8H6z']},
+  italic: {l: [[19, 4, 10, 4], [14, 20, 5, 20], [15, 4, 9, 20]]},
+  strike: {p: ['M16 4H9a3 3 0 0 0-2.83 4', 'M14 12a4 4 0 0 1 0 8H6'], l: [[4, 12, 20, 12]]},
+  code: {p: ['m16 18 6-6-6-6', 'm8 6-6 6 6 6']},
+  archive: {p: ['M3 4h18v4H3z', 'M5 8v12h14V8', 'M10 12h4']},
+  status: {p: ['M10.1 2.182a10 10 0 0 1 3.8 0', 'M13.9 21.818a10 10 0 0 1-3.8 0', 'M17.609 3.721a10 10 0 0 1 2.69 2.7', 'M2.182 13.9a10 10 0 0 1 0-3.8', 'M20.279 17.609a10 10 0 0 1-2.7 2.69', 'M21.818 10.1a10 10 0 0 1 0 3.8', 'M3.721 6.391a10 10 0 0 1 2.7-2.69', 'M6.391 20.279a10 10 0 0 1-2.69-2.7'], c: [[12, 12, 3]]},
+  sparkles: {p: ['M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z', 'M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z']},
   wallpaper: {p: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M3 15l5-5 4 4 3-3 6 6'], c: [[8, 8, 1.2]]},
 };
 
@@ -187,8 +256,13 @@ type Props = {
   fill?: string;
 };
 
-export function Icon({name, size = 24, color = colors.text, strokeWidth = 2, fill = 'none'}: Props) {
+/** Closed shapes get a soft tint of the icon's own colour behind the line (duotone) — a richer look than bare outlines. */
+const isClosed = (d: string) => /[zZ]\s*$/.test(d);
+
+function IconBase({name, size = 24, color = colors.text, strokeWidth = 1.9, fill = 'none'}: Props) {
   const shape = ICONS[name];
+  // Clean outline icons: nothing is filled unless a fill colour is asked for (a faint inner tint read as grey).
+  const tint = fill !== 'none' ? fill : 'none';
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       {shape.p?.map((d, i) => (
@@ -199,7 +273,7 @@ export function Icon({name, size = 24, color = colors.text, strokeWidth = 2, fil
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeLinejoin="round"
-          fill={fill}
+          fill={fill === 'none' && isClosed(d) ? tint : fill}
         />
       ))}
       {shape.c?.map((c, i) => (
@@ -210,7 +284,7 @@ export function Icon({name, size = 24, color = colors.text, strokeWidth = 2, fil
           r={c[2]}
           stroke={color}
           strokeWidth={strokeWidth}
-          fill={c[2] < 1 ? color : fill}
+          fill={c[2] < 1 ? color : fill === 'none' && c[2] >= 3 ? tint : fill}
         />
       ))}
       {shape.l?.map((ln, i) => (
@@ -228,5 +302,7 @@ export function Icon({name, size = 24, color = colors.text, strokeWidth = 2, fil
     </Svg>
   );
 }
+
+export const Icon = React.memo(IconBase);
 
 export default Icon;

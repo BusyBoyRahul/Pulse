@@ -3,6 +3,8 @@ import {Platform} from 'react-native';
 import {MeshEngine} from './meshEngine';
 import {NearbyMeshTransport} from './transport/NearbyMeshTransport';
 import {BleMeshTransport} from './transport/BleMeshTransport';
+import {MultiTransport} from './transport/MultiTransport';
+import {getInternetTransport} from '@/net/internet';
 import type {MeshTransport} from './transport/types';
 import {getIdentity} from '@/services/identity';
 
@@ -19,7 +21,9 @@ import {getIdentity} from '@/services/identity';
 let engine: MeshEngine | null = null;
 
 function defaultTransport(): MeshTransport {
-  return Platform.OS === 'android' ? new NearbyMeshTransport() : new BleMeshTransport();
+  const radio = Platform.OS === 'android' ? new NearbyMeshTransport() : new BleMeshTransport();
+  // Bluetooth/Wi-Fi AND the internet; the internet road is switched on/off by the "Internet" setting.
+  return new MultiTransport([radio, getInternetTransport()]);
 }
 
 export function getMeshEngine(transport?: MeshTransport): MeshEngine {

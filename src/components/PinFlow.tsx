@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {Modal, StatusBar} from 'react-native';
-import {useLockStore} from '@/store/lockStore';
+import {useLockStore, LockKind} from '@/store/lockStore';
 import {PinPad} from './PinPad';
 
 export type PinFlowMode =
@@ -11,6 +11,8 @@ export type PinFlowMode =
 
 type Props = {
   visible: boolean;
+  /** Which lock this PIN belongs to: the whole app, or the locked chats. */
+  kind: LockKind;
   mode: PinFlowMode;
   onClose: () => void;
   /** The PIN was set / changed / removed / verified. */
@@ -20,12 +22,13 @@ type Props = {
 type Step = 'old' | 'new' | 'confirm';
 
 /** The full set-a-PIN / change / remove / verify conversation, in a full-screen sheet. */
-export function PinFlow({visible, mode, onClose, onDone}: Props) {
+export function PinFlow({visible, kind, mode, onClose, onDone}: Props) {
   const start: Step = mode === 'set' ? 'new' : 'old';
   const [step, setStep] = useState<Step>(start);
   const [first, setFirst] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
+  const word = kind === 'chat' ? 'code' : 'PIN';
 
   useEffect(() => {
     if (visible) {
@@ -45,15 +48,15 @@ export function PinFlow({visible, mode, onClose, onDone}: Props) {
     const lock = useLockStore.getState();
     setError(null);
     if (step === 'old') {
-      const r = lock.verify(pin);
+      const r = lock.verify(kind, pin);
       if (r === 'wait') {
-        return fail(`Too many wrong tries. Wait ${lock.waitSeconds()} seconds.`);
+        return fail(`Too many wrong tries. Wait ${lock.waitSeconds(kind)} seconds.`);
       }
       if (r === 'wrong') {
-        return fail('Wrong PIN');
+        return fail(`Wrong ${word}`);
       }
       if (mode === 'remove') {
-        lock.removePin();
+        lock.removePin(kind);
         return onDone();
       }
       if (mode === 'verify') {
@@ -69,25 +72,27 @@ export function PinFlow({visible, mode, onClose, onDone}: Props) {
     }
     if (pin !== first) {
       setStep('new');
-      return fail('The two PINs didn’t match. Start again.');
+      return fail(`The two ${word}s didn’t match. Start again.`);
     }
-    lock.setPin(pin);
+    lock.setPin(kind, pin);
     onDone();
   };
 
   const title =
     step === 'old'
       ? mode === 'remove'
-        ? 'Enter your PIN to turn the lock off'
+        ? `Enter your ${word} to turn the lock off`
         : mode === 'verify'
-        ? 'Enter your PIN'
-        : 'Enter your current PIN'
+        ? `Enter your ${word}`
+        : `Enter your current ${word}`
       : step === 'new'
-      ? 'Choose a PIN'
+      ? `Choose a ${word}`
       : 'Enter it once more';
   const subtitle =
     step === 'new'
-      ? '4 to 8 digits. You’ll use it to open locked chats and the app.'
+      ? kind === 'chat'
+        ? '4 to 8 digits. Opens all your locked chats.'
+        : '4 to 8 digits. Opens Pulse.'
       : step === 'confirm'
       ? 'To make sure you typed it right.'
       : undefined;
@@ -100,7 +105,7 @@ export function PinFlow({visible, mode, onClose, onDone}: Props) {
         subtitle={subtitle}
         error={error}
         resetKey={resetKey}
-        submitLabel={step === 'new' ? 'Next' : step === 'confirm' ? 'Save PIN' : 'Confirm'}
+        submitLabel={step === 'new' ? 'Next' : step === 'confirm' ? `Save ${word}` : 'Confirm'}
         onSubmit={submit}
         onCancel={onClose}
       />

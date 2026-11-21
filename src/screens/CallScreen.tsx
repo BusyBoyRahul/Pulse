@@ -1,11 +1,13 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect, useRef, useState} from 'react';
 import {Animated, Easing, Pressable, StyleSheet, View} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 
-import {Screen, Txt, Icon, IconName, Avatar} from '@/components';
+import {Screen, Txt, Icon, Avatar, CallButton} from '@/components';
 import {colors, spacing} from '@/theme/theme';
 import {useCallStore} from '@/store/callStore';
 import {usePeersStore} from '@/store/peersStore';
+import {displayName} from '@/services/names';
 
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const clock = (ms: number) => {
@@ -13,44 +15,10 @@ const clock = (ms: number) => {
   return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
 };
 
-function RoundButton({
-  icon,
-  label,
-  onPress,
-  on,
-  tone,
-  size = 68,
-}: {
-  icon: IconName;
-  label?: string;
-  onPress: () => void;
-  on?: boolean;
-  tone?: 'danger' | 'primary';
-  size?: number;
-}) {
-  const bg = tone === 'danger' ? colors.danger : tone === 'primary' ? colors.primary : on ? colors.primary : colors.surfaceRaised;
-  const fg = tone === 'danger' ? colors.onDanger : tone === 'primary' || on ? colors.onPrimary : colors.text;
-  return (
-    <View style={styles.btnWrap}>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={({pressed}) => [styles.btn, {width: size, height: size, borderRadius: size / 2, backgroundColor: bg}, pressed && {opacity: 0.8}]}>
-        <Icon name={icon} size={size * 0.38} color={fg} />
-      </Pressable>
-      {label ? (
-        <Txt variant="caption" tone="secondary" style={styles.btnLabel}>
-          {label}
-        </Txt>
-      ) : null}
-    </View>
-  );
-}
-
 export default function CallScreen() {
   const nav = useNavigation();
   const call = useCallStore();
+  const who = call.peerKey ? displayName(call.peerKey, call.peerName) : call.peerName; // their name, never their ID
   const avatar = usePeersStore(s => (call.peerKey ? s.peers[call.peerKey]?.avatar : undefined));
   const [now, setNow] = useState(Date.now());
 
@@ -102,15 +70,19 @@ export default function CallScreen() {
   return (
     <Screen padded={false}>
       <View style={styles.top}>
+        {/* Minimise: leave this screen but keep the call going (a green bar at the top brings you back). */}
+        <Pressable onPress={() => nav.canGoBack() && nav.goBack()} hitSlop={14} style={styles.minimise} accessibilityRole="button" accessibilityLabel="Minimise the call">
+          <Icon name="chevronDown" size={18} color={colors.textSecondary} />
+          <Txt variant="label" tone="secondary">
+            Minimise
+          </Txt>
+        </Pressable>
         <View style={styles.badge}>
           <Icon name="lock" size={12} color={colors.textSecondary} />
           <Txt variant="label" tone="secondary">
             END-TO-END ENCRYPTED{call.phase === 'active' ? ` · ${via.toUpperCase()}` : ''}
           </Txt>
         </View>
-        <Pressable onPress={() => nav.canGoBack() && nav.goBack()} hitSlop={14} style={styles.minimise}>
-          <Icon name="chevronDown" size={22} color={colors.textSecondary} />
-        </Pressable>
       </View>
 
       <View style={styles.center}>
@@ -128,12 +100,12 @@ export default function CallScreen() {
             />
           ))}
           <Animated.View style={{transform: [{scale: swell.interpolate({inputRange: [0, 1], outputRange: [1, 1.16]})}]}}>
-            <Avatar name={call.peerName || '?'} seed={call.peerKey ?? undefined} uri={avatar} size={148} ring />
+            <Avatar name={who || '?'} seed={call.peerKey ?? undefined} uri={avatar} size={148} ring />
           </Animated.View>
         </View>
 
         <Txt variant="title" center style={styles.name} numberOfLines={1}>
-          {call.peerName}
+          {who}
         </Txt>
         <Txt variant="subtitle" tone={call.phase === 'ended' ? 'muted' : 'secondary'} center style={styles.status}>
           {status}
@@ -146,22 +118,22 @@ export default function CallScreen() {
       <View style={styles.controls}>
         {call.phase === 'incoming' ? (
           <View style={styles.row}>
-            <RoundButton icon="phoneOff" label="Decline" tone="danger" size={76} onPress={call.decline} />
-            <RoundButton icon="phone" label="Accept" tone="primary" size={76} onPress={() => void call.accept()} />
+            <CallButton icon="phoneOff" label="Decline" tone="danger" size={76} onPress={call.decline} />
+            <CallButton icon="phone" label="Accept" tone="success" size={76} onPress={() => void call.accept()} />
           </View>
         ) : call.phase === 'active' ? (
           <>
             <View style={styles.row}>
-              <RoundButton icon={call.muted ? 'micOff' : 'mic'} label={call.muted ? 'Unmute' : 'Mute'} on={call.muted} onPress={call.toggleMute} />
-              <RoundButton icon="speaker" label="Speaker" on={call.speaker} onPress={call.toggleSpeaker} />
+              <CallButton icon={call.muted ? 'micOff' : 'mic'} label={call.muted ? 'Unmute' : 'Mute'} on={call.muted} onPress={call.toggleMute} />
+              <CallButton icon="speaker" label="Speaker" on={call.speaker} onPress={call.toggleSpeaker} />
             </View>
             <View style={styles.endRow}>
-              <RoundButton icon="phoneOff" label="End" tone="danger" size={76} onPress={call.hangup} />
+              <CallButton icon="phoneOff" label="End" tone="danger" size={76} onPress={call.hangup} />
             </View>
           </>
         ) : call.phase === 'outgoing' ? (
           <View style={styles.endRow}>
-            <RoundButton icon="phoneOff" label="Cancel" tone="danger" size={76} onPress={call.hangup} />
+            <CallButton icon="phoneOff" label="Cancel" tone="danger" size={76} onPress={call.hangup} />
           </View>
         ) : null}
       </View>
@@ -169,20 +141,17 @@ export default function CallScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  top: {paddingTop: 20, alignItems: 'center'},
-  badge: {flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border},
-  minimise: {position: "absolute", left: spacing.xl, top: 22},
+const styles = themedStyles(() => StyleSheet.create({
+  top: {paddingTop: 20, alignItems: 'center', gap: spacing.sm},
+  badge: {flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.primaryDim},
+  minimise: {alignSelf: 'flex-start', marginLeft: spacing.xl, flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: spacing.md, borderRadius: 18, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border},
   center: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl},
   avatarStage: {width: 220, height: 220, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xl},
-  ring: {position: 'absolute', width: 148, height: 148, borderRadius: 74, borderWidth: 1.5, borderColor: colors.text},
+  ring: {position: 'absolute', width: 148, height: 148, borderRadius: 74, borderWidth: 1.5, borderColor: colors.primary},
   name: {maxWidth: '90%'},
   status: {marginTop: spacing.sm, fontVariant: ['tabular-nums']},
   privacy: {marginTop: spacing.xl, maxWidth: 260},
   controls: {paddingBottom: 56, paddingHorizontal: spacing.xl},
   row: {flexDirection: 'row', justifyContent: 'space-evenly'},
   endRow: {alignItems: 'center', marginTop: spacing.xl},
-  btnWrap: {alignItems: 'center'},
-  btn: {alignItems: 'center', justifyContent: 'center'},
-  btnLabel: {marginTop: spacing.sm},
-});
+}));

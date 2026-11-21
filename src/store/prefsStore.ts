@@ -15,6 +15,8 @@ export type ConvPrefs = {
   /** ms timestamp the mute ends, or MUTE_FOREVER. */
   mutedUntil?: number;
   pinned?: boolean;
+  /** When it was pinned (or moved): pinned chats are listed by this, newest on top, so their order is theirs to keep. */
+  pinnedAt?: number;
   /** false = this person can't ring you. Undefined = allowed. */
   allowCalls?: boolean;
   blocked?: boolean;
@@ -27,11 +29,19 @@ export type ConvPrefs = {
   label?: string;
   /** Messages in this chat vanish this many ms after they are sent. Undefined = keep forever. */
   disappear?: number;
+  /** A one-to-one chat's pinned messages (the same on both phones, oldest first, up to 3): each one's id, who wrote it, a short copy of its text, and who pinned it. */
+  pinMsgs?: {mid: string; from: string; t: string; by: string}[];
   /** Needs the PIN (or fingerprint) to open; its preview and notifications are hidden. */
   locked?: boolean;
+  /** This person does not get to see my Status updates. */
+  hideStatus?: boolean;
+  /** Chosen to see my Status when "Only share with…" is picked. */
+  showStatus?: boolean;
+  /** Tucked away in "Archived" (still receives messages; stays archived). */
+  archived?: boolean;
 };
 
-export type KnownProfile = {avatar?: string; bio?: string; name?: string; seenAt?: number};
+export type KnownProfile = {avatar?: string; bio?: string; name?: string; seenAt?: number; /** I checked, with a text message, that they own the number they claim. */ numberOk?: boolean};
 
 const PREFS_KEY = 'chat.prefs';
 const PROFILES_KEY = 'chat.profiles';
@@ -48,6 +58,8 @@ type PrefsState = {
   hydrate: () => void;
   addLabel: (name: string) => void;
   removeLabel: (name: string) => void;
+  /** Give a label a new name everywhere it is used. */
+  renameLabel: (from: string, to: string) => void;
   /** Apply one change to many chats at once (multi-select in the chat list). */
   patchMany: (ids: string[], p: Partial<ConvPrefs>) => void;
   patch: (id: string, p: Partial<ConvPrefs>) => void;
@@ -88,6 +100,24 @@ export const usePrefsStore = create<PrefsState>((set, get) => ({
     set({labels});
   },
 
+  renameLabel: (from, to) => {
+    const n = to.trim().slice(0, 20);
+    const taken = get().labels.some(l => l !== from && l.toLowerCase() === n.toLowerCase());
+    if (!n || n === from || taken || !get().labels.includes(from)) {
+      return;
+    }
+    const labels = get().labels.map(l => (l === from ? n : l));
+    setJSON(LABELS_KEY, labels);
+    const prefs = {...get().prefs};
+    for (const id of Object.keys(prefs)) {
+      if (prefs[id].label === from) {
+        prefs[id] = {...prefs[id], label: n};
+      }
+    }
+    setJSON(PREFS_KEY, prefs);
+    set({labels, prefs});
+  },
+
   removeLabel: name => {
     const labels = get().labels.filter(l => l !== name);
     setJSON(LABELS_KEY, labels);
@@ -108,11 +138,18 @@ export const usePrefsStore = create<PrefsState>((set, get) => ({
   },
 
   patchMany: (ids, p) => {
-    ids.forEach(id => get().patch(id, p));
+    ids.forEach((id, n) => get().patch(id, p.pinned === true && !get().prefs[id]?.pinned ? {...p, pinnedAt: Date.now() - n} : p));
   },
 
   patch: (id, p) => {
     const merged: ConvPrefs = {...get().prefs[id], ...p};
+    // Newly pinned: it goes on top of the pinned chats. Unpinned: it forgets its place.
+    if (p.pinned === true && p.pinnedAt === undefined && !get().prefs[id]?.pinned) {
+      merged.pinnedAt = Date.now();
+    }
+    if (p.pinned === false) {
+      delete merged.pinnedAt;
+    }
     // Keep the saved file small: drop anything that's back to its default.
     (Object.keys(merged) as (keyof ConvPrefs)[]).forEach(k => {
       const v = merged[k];

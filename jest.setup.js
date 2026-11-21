@@ -7,11 +7,18 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 jest.mock('react-native-udp', () => ({createSocket: () => ({})}));
 jest.mock('react-native-tcp-socket', () => ({createServer: () => ({listen() {}, close() {}}), createConnection: () => ({})}));
 jest.mock('react-native-geolocation-service', () => ({getCurrentPosition: () => {}}));
-jest.mock('react-native-send-direct-sms', () => ({SendDirectSms: async () => true}));
 jest.mock('react-native-image-picker', () => ({launchImageLibrary: async () => ({}), launchCamera: async () => ({})}));
 jest.mock('@react-native-clipboard/clipboard', () => ({setString() {}, getString: async () => ''}));
 
 jest.mock('react-native-ble-plx', () => ({
   BleManager: class {},
   State: {PoweredOn: 'PoweredOn', PoweredOff: 'PoweredOff'},
+}));
+
+// Animation + gesture libraries: use their test doubles.
+jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+jest.mock('react-native-gesture-handler', () => ({
+  GestureHandlerRootView: ({children}) => children,
+  GestureDetector: ({children}) => children,
+  Gesture: new Proxy({}, {get: () => () => new Proxy({}, {get: () => () => ({})})}),
 }));

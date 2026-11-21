@@ -5,6 +5,8 @@ import {getIdentity} from './identity';
 type RequestOtpResponse = {ok: boolean; devMode: boolean};
 type VerifyOtpResponse = {
   token: string;
+  /** Signed certificate: this phone number belongs to this Pulse key (null if the server has no signing key). */
+  attestation: string | null;
   user: {id: number; phone: string; displayName: string | null};
 };
 

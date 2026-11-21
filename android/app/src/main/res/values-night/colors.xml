@@ -1,0 +1,5 @@
+<resources>
+    <!-- ...and its dark theme (phone set to dark). -->
+    <color name="windowBg">#070813</color>
+    <color name="accent">#2F8BFF</color>
+</resources>

@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect, useState} from 'react';
 import {FlatList, Linking, Pressable, StyleSheet, TextInput, View} from 'react-native';
 import {Screen, Button, Txt, Card, Sheet, Icon} from '@/components';
@@ -90,7 +91,7 @@ export default function SafetyNotesScreen() {
           </View>
         }
         ListEmptyComponent={
-          <Card style={styles.empty} raised>
+          <Card flat style={styles.empty} raised>
             <Txt variant="subtitle" center>
               No notes nearby
             </Txt>
@@ -128,7 +129,7 @@ export default function SafetyNotesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   list: {padding: spacing.xl, paddingBottom: spacing.xxxl},
   screenTitle: {marginTop: spacing.sm, marginBottom: spacing.md},
   intro: {marginBottom: spacing.lg},
@@ -159,4 +160,4 @@ const styles = StyleSheet.create({
   },
   counter: {textAlign: 'right', marginTop: spacing.xs, marginBottom: spacing.sm},
   err: {marginBottom: spacing.sm},
-});
+}));

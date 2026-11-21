@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useRef, useState} from 'react';
 import {Animated, Easing, Pressable, StyleSheet, View} from 'react-native';
 import {colors, radius} from '@/theme/theme';
@@ -68,7 +69,7 @@ export function HoldButton({
         style={[
           styles.outer,
           {width: size, height: size, borderRadius: size / 2, borderColor: color, transform: [{scale: ringScale}]},
-          holding && {shadowColor: color, shadowOpacity: 0.6, shadowRadius: 30, elevation: 20},
+          holding && {shadowColor: color, shadowOpacity: 0.25, shadowRadius: 10, elevation: 0},
         ]}>
         <View style={[styles.fillClip, {borderRadius: size / 2}]}>
           <Animated.View style={[styles.fill, {height: fillHeight, backgroundColor: color}]} />
@@ -88,7 +89,7 @@ export function HoldButton({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   outer: {
     borderWidth: 3,
     alignItems: 'center',
@@ -100,6 +101,6 @@ const styles = StyleSheet.create({
   fill: {width: '100%', opacity: 0.35, borderRadius: radius.sm},
   content: {alignItems: 'center', paddingHorizontal: 16},
   label: {marginBottom: 4},
-});
+}));
 
 export default HoldButton;

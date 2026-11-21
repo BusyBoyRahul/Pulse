@@ -1,13 +1,8 @@
+import {themedStyles} from '@/theme/themed';
 import React from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  ViewStyle,
-} from 'react-native';
-import {colors, radius, spacing, typography} from '@/theme/theme';
+import {ActivityIndicator, StyleSheet, Text, View, ViewStyle} from 'react-native';
+import {colors, spacing, typography} from '@/theme/theme';
+import {Pressy} from './Pressy';
 
 type Variant = 'primary' | 'danger' | 'secondary' | 'ghost';
 
@@ -20,22 +15,16 @@ type Props = {
   icon?: React.ReactNode;
   style?: ViewStyle;
   fullWidth?: boolean;
+  /** 'md' 54px for forms and sheets (default); 'sm' 40px for buttons inside a row or card. */
+  size?: 'md' | 'sm';
 };
 
-const bg: Record<Variant, string> = {
-  primary: colors.primary,
-  danger: colors.danger,
-  secondary: colors.surfaceRaised,
-  ghost: 'transparent',
-};
-
-const fg: Record<Variant, string> = {
-  primary: colors.onPrimary,
-  danger: colors.onDanger,
-  secondary: colors.text,
-  ghost: colors.primaryBright,
-};
-
+/**
+ * Pulse button — solid, flat colours (no gradients, no glow): fast to draw and easy to read.
+ * UI rule: a row of actions is all text buttons (this) or all icon buttons
+ * (<IconButton/>) — never mixed.
+ * Primary = solid accent · secondary = outlined · ghost = text only · danger = solid red.
+ */
 export function Button({
   label,
   onPress,
@@ -45,52 +34,54 @@ export function Button({
   icon,
   style,
   fullWidth = true,
+  size = 'md',
 }: Props) {
   const isDisabled = disabled || loading;
+  const small = size === 'sm';
+  const height = small ? 40 : variant === 'ghost' ? 44 : 52;
+  const fg = variant === 'primary' ? colors.onPrimary : variant === 'danger' ? colors.onDanger : variant === 'secondary' ? colors.text : colors.primaryBright;
+
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{disabled: isDisabled, busy: loading}}
-      disabled={isDisabled}
+    <Pressy
       onPress={onPress}
-      style={({pressed}) => [
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{disabled: isDisabled}}
+      scaleTo={0.98}
+      style={[
         styles.base,
-        {backgroundColor: bg[variant]},
-        variant === 'ghost' && styles.ghost,
-        variant === 'secondary' && styles.secondaryBorder,
-        fullWidth && styles.fullWidth,
-        pressed && !isDisabled && styles.pressed,
+        {height, borderRadius: 999},
+        variant === 'primary' && {backgroundColor: colors.primary},
+        variant === 'danger' && {backgroundColor: colors.danger},
+        variant === 'secondary' && styles.outline,
+        fullWidth ? styles.fullWidth : {paddingHorizontal: small ? spacing.lg : spacing.xl},
         isDisabled && styles.disabled,
         style,
       ]}>
       {loading ? (
-        <ActivityIndicator color={fg[variant]} />
+        <ActivityIndicator color={fg} />
       ) : (
         <View style={styles.row}>
           {icon ? <View style={styles.icon}>{icon}</View> : null}
-          <Text style={[styles.label, {color: fg[variant]}]}>{label}</Text>
+          <Text style={[styles.label, small && styles.labelSmall, {color: fg}]} numberOfLines={1}>
+            {label}
+          </Text>
         </View>
       )}
-    </Pressable>
+    </Pressy>
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    height: 54,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-  },
+const styles = themedStyles(() => StyleSheet.create({
+  base: {alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl},
   fullWidth: {alignSelf: 'stretch'},
   row: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center'},
   icon: {marginRight: spacing.sm},
-  label: {...typography.subtitle},
-  ghost: {height: 44},
-  secondaryBorder: {borderWidth: 1, borderColor: colors.border},
-  pressed: {opacity: 0.85, transform: [{scale: 0.99}]},
-  disabled: {opacity: 0.4},
-});
+  label: {...typography.subtitle, fontWeight: '700'},
+  labelSmall: {fontSize: 14, lineHeight: 20, fontWeight: '700'},
+  outline: {backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.glassBorder},
+  disabled: {opacity: 0.42},
+}));
 
 export default Button;

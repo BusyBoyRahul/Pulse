@@ -56,7 +56,7 @@ describe('per-person choices', () => {
   it('keeps only real choices, and “calls allowed” is the default', () => {
     const p = usePrefsStore.getState();
     p.patch('z', {pinned: true, nickname: ' '});
-    expect(usePrefsStore.getState().prefs.z).toEqual({pinned: true, nickname: ' '});
+    expect(usePrefsStore.getState().prefs.z).toEqual({pinned: true, pinnedAt: expect.any(Number), nickname: ' '}); // a pinned chat also remembers its place
     p.patch('z', {pinned: false, nickname: ''});
     expect(usePrefsStore.getState().prefs.z).toBeUndefined(); // back to defaults: nothing stored
     p.patch('z', {allowCalls: false});

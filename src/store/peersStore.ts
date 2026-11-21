@@ -116,12 +116,13 @@ export const usePeersStore = create<PeersState>((set, get) => ({
       if (privacy.discoverable) {
         // The hello is tiny and relayed several hops. The photo thumbnail is big,
         // so it only goes to direct neighbours (ttl 0 = never relayed), every 3rd beat.
-        void engine.send({type: 'PRESENCE', ttl: PRESENCE_TTL, payload: buildPresencePayload(name, null, session.bio)});
-        if (tick % 3 === 0 && session.avatarThumb && privacy.shareAvatar) {
+        const showAbout = privacy.aboutAudience === 'everyone' ? session.bio : null;
+        void engine.send({type: 'PRESENCE', ttl: PRESENCE_TTL, payload: buildPresencePayload(name, null, showAbout)});
+        if (tick % 3 === 0 && session.avatarThumb && privacy.photoAudience === 'everyone') {
           void engine.send({
             type: 'PRESENCE',
             ttl: 0,
-            payload: buildPresencePayload(name, session.avatarThumb, session.bio),
+            payload: buildPresencePayload(name, session.avatarThumb, showAbout),
           });
         }
       }

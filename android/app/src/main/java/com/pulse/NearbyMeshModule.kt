@@ -1,9 +1,16 @@
 package com.pulse
 
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -55,6 +62,14 @@ class NearbyMeshModule(private val reactContext: ReactApplicationContext) :
 
   private var localName: String = "pulse"
   private var running = false
+  // JS wants the radio on. Switching the phone's Wi-Fi / Bluetooth ON (which Nearby does by itself when it needs them) happens ONLY
+  // when the person has just switched the mesh on in the app (allowPowerOn). Any other start - Pulse opening with the mesh already
+  // on - waits until the person turns Wi-Fi and Bluetooth on themselves. If they turn one off, the radio lets go and does not power
+  // it back on until they switch the mesh on again.
+  private var wanted = false
+  private var allowPowerOn = false
+  private var sawRadiosOn = false
+  private var radioReceiver: BroadcastReceiver? = null
   // Touched from both Nearby's main-thread callbacks and the RN bridge thread
   // (send()), so all of these must be thread-safe to avoid a mid-send crash.
   private val connected = CopyOnWriteArraySet<String>()
@@ -213,12 +228,147 @@ class NearbyMeshModule(private val reactContext: ReactApplicationContext) :
         .addOnFailureListener { emit("NearbyState", stateMap("error", it.message)) }
   }
 
-  // ---- JS API -------------------------------------------------------------
+  // ---- The phone's own radios ---------------------------------------------
+
+  /** "wifi-off" / "bluetooth-off" while one of them is off on the phone, otherwise null. We never turn them on. */
+  private fun radioOff(): String? {
+    val wifi = reactContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+    if (wifi != null && !wifi.isWifiEnabled) return "wifi-off"
+    val bt = (reactContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+    if (bt != null && !bt.isEnabled) return "bluetooth-off"
+    return null
+  }
+
+  /** Follow the person turning Wi-Fi or Bluetooth on or off. */
+  private fun watchRadios() {
+    if (radioReceiver != null) return
+    val receiver =
+        object : BroadcastReceiver() {
+          override fun onReceive(context: Context?, intent: Intent?) {
+            main.post { reevaluate() }
+          }
+        }
+    val filter =
+        IntentFilter().apply {
+          addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
+          addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+        }
+    ContextCompat.registerReceiver(reactContext, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+    radioReceiver = receiver
+  }
+
+  private fun unwatchRadios() {
+    radioReceiver?.let {
+      try {
+        reactContext.unregisterReceiver(it)
+      } catch (_: Exception) {}
+    }
+    radioReceiver = null
+  }
+
+  /** Run only while both radios are on: start when the person turns them on, let go when they turn one off. */
+  private fun reevaluate() {
+    if (!wanted) return
+    val off = radioOff()
+    if (off == null) {
+      sawRadiosOn = true
+      if (!running) {
+        running = true
+        allowPowerOn = false
+        startRadios()
+        emit("NearbyState", stateMap("active", null))
+      }
+    } else if (running && sawRadiosOn) {
+      // The person turned Wi-Fi or Bluetooth off while we were using it: stop, and never power it back on by ourselves.
+      pauseRadios()
+      allowPowerOn = false
+      sawRadiosOn = false
+      emit("NearbyState", stateMap(off, null))
+    } else if (!running) {
+      emit("NearbyState", stateMap(off, null))
+    }
+  }
+
+  /** Stop using the radios (links, advertising, discovery) but keep waiting for them to come back. */
+  private fun pauseRadios() {
+    running = false
+    main.removeCallbacksAndMessages(null)
+    try {
+      client.stopAdvertising()
+      client.stopDiscovery()
+      client.stopAllEndpoints()
+    } catch (_: Exception) {}
+    connected.clear()
+    connecting.clear()
+    discovered.clear()
+    endpointNames.clear()
+    attempts.clear()
+    emitEndpoints()
+  }
+
+  // ---- Wi-Fi watcher (for the app's mesh rules) ----------------------------
+
+  private var wifiWatcher: BroadcastReceiver? = null
+
+  private fun wifiOn(): Boolean {
+    val wifi = reactContext.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+    return wifi?.isWifiEnabled == true
+  }
+
+  /** Tell JS whenever the person turns the phone's Wi-Fi on or off. Resolves with the current state. */
+  @ReactMethod
+  fun watchWifi(promise: Promise) {
+    try {
+      if (wifiWatcher == null) {
+        val receiver =
+            object : BroadcastReceiver() {
+              override fun onReceive(context: Context?, intent: Intent?) {
+                val state = intent?.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
+                if (state == WifiManager.WIFI_STATE_ENABLED || state == WifiManager.WIFI_STATE_DISABLED) {
+                  val m = Arguments.createMap()
+                  m.putBoolean("on", state == WifiManager.WIFI_STATE_ENABLED)
+                  emit("WifiState", m)
+                }
+              }
+            }
+        ContextCompat.registerReceiver(
+            reactContext, receiver, IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION), ContextCompat.RECEIVER_NOT_EXPORTED)
+        wifiWatcher = receiver
+      }
+      promise.resolve(wifiOn())
+    } catch (e: Exception) {
+      promise.resolve(false)
+    }
+  }
 
   @ReactMethod
-  fun start(name: String, promise: Promise) {
+  fun isWifiOn(promise: Promise) {
+    promise.resolve(wifiOn())
+  }
+
+  // ---- JS API -------------------------------------------------------------
+
+  /**
+   * Resolves true when the radio is running, false when it is waiting because Wi-Fi or Bluetooth is off. [allowPowerOn] is true only
+   * right after the person switched the mesh on in the app: then Nearby may switch them on. Otherwise we only wait.
+   */
+  @ReactMethod
+  fun start(name: String, allowPowerOn: Boolean, promise: Promise) {
     localName = if (name.isNotEmpty()) name else "pulse"
     try {
+      wanted = true
+      this.allowPowerOn = allowPowerOn
+      watchRadios()
+      val off = radioOff()
+      sawRadiosOn = off == null
+      if (off != null && !allowPowerOn) {
+        // Pulse just opened with the mesh already on: wait, and do not touch Wi-Fi / Bluetooth.
+        running = false
+        emit("NearbyState", stateMap(off, null))
+        promise.resolve(false)
+        return
+      }
+      if (allowPowerOn) startBoost() // only when the person just switched the mesh on - never when Pulse merely opens
       running = true
       startRadios()
       emit("NearbyState", stateMap("active", null))
@@ -228,11 +378,21 @@ class NearbyMeshModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
+  /** A short (12 s) foreground service while the radio starts, as the old start-up had; it ends by itself. */
+  private fun startBoost() {
+    try {
+      val i = Intent(reactContext, MeshForegroundService::class.java).putExtra("mode", "mesh")
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) reactContext.startForegroundService(i) else reactContext.startService(i)
+    } catch (_: Exception) {}
+  }
+
   /** Restart discovery + advertising WITHOUT dropping live connections. */
   @ReactMethod
   fun refresh(promise: Promise) {
     try {
-      if (running) {
+      if (running && radioOff() != null) {
+        reevaluate() // the person turned Wi-Fi or Bluetooth off meanwhile
+      } else if (running) {
         client.stopDiscovery()
         client.stopAdvertising()
         discovered.clear()
@@ -247,6 +407,10 @@ class NearbyMeshModule(private val reactContext: ReactApplicationContext) :
   @ReactMethod
   fun stop(promise: Promise) {
     try {
+      wanted = false
+      allowPowerOn = false
+      sawRadiosOn = false
+      unwatchRadios()
       running = false
       main.removeCallbacksAndMessages(null)
       client.stopAdvertising()
@@ -285,23 +449,12 @@ class NearbyMeshModule(private val reactContext: ReactApplicationContext) :
   }
 
   /**
-   * Keep the mesh alive with the screen off. Without a foreground service Android
-   * freezes the app, so a phone in a pocket would silently stop relaying.
+   * Used to start a permanent background service (and its "running in the background" notification). That is gone: the only
+   * foreground service now runs during a voice call (see MeshForegroundService). Kept so older JavaScript calling it is harmless.
    */
   @ReactMethod
   fun startService(promise: Promise) {
-    try {
-      val intent = Intent(reactContext, MeshForegroundService::class.java)
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        reactContext.startForegroundService(intent)
-      } else {
-        reactContext.startService(intent)
-      }
-      promise.resolve(true)
-    } catch (e: Exception) {
-      // Not fatal: the mesh still works while the app is open.
-      promise.resolve(false)
-    }
+    promise.resolve(true)
   }
 
   @ReactMethod

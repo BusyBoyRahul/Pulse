@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useCallback, useState} from 'react';
 import {Pressable, StyleSheet, View} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
@@ -6,6 +7,7 @@ import {Screen, Txt, Button, Sheet, SettingRow, SettingGroup, SettingLabel} from
 import {colors, radius, spacing} from '@/theme/theme';
 import {useSettingsStore} from '@/store/settingsStore';
 import {notifier} from '@/services/notifier';
+import {requestNotifications} from '@/services/permissions';
 
 /** "10:30 PM" from minutes after midnight. */
 function clock(mins: number): string {
@@ -36,9 +38,14 @@ export default function SettingsNotificationsScreen() {
         <View style={styles.warn}>
           <Txt variant="bodyStrong">Notifications are turned off for Pulse</Txt>
           <Txt variant="caption" tone="secondary" style={styles.warnSub}>
-            Android is blocking them, so you won’t hear about messages, calls or SOS alerts while the app is closed.
+            Android is blocking them, so you won’t be notified while Pulse is closed.
           </Txt>
-          <Button label="Turn on in Android settings" onPress={() => notifier.openSystemSettings(null)} />
+          <Button
+            label="Allow notifications"
+            onPress={() => {
+              void requestNotifications().then(() => notifier.enabled().then(setAllowed));
+            }}
+          />
         </View>
       ) : null}
 
@@ -78,14 +85,6 @@ export default function SettingsNotificationsScreen() {
         <SettingRow title="Until" value={clock(app.quietTo)} disabled={!app.quietOn} onPress={() => setPicking('quietTo')} />
       </SettingGroup>
 
-      <SettingLabel>SOUNDS (ANDROID SETTINGS)</SettingLabel>
-      <SettingGroup>
-        <SettingRow icon="chat" title="Message sound" onPress={() => notifier.openSystemSettings('messages')} />
-        <SettingRow icon="sos" title="SOS alert sound" onPress={() => notifier.openSystemSettings('sos')} />
-        <SettingRow icon="phone" title="Call ringtone" onPress={() => notifier.openSystemSettings('calls')} />
-        <SettingRow icon="users" title="Requests & invites sound" onPress={() => notifier.openSystemSettings('requests')} />
-      </SettingGroup>
-
       <SettingLabel>TRY IT</SettingLabel>
       <SettingGroup>
         <SettingRow icon="chat" title="Send a test message notification" onPress={() => notifier.test('message')} noChevron />
@@ -93,7 +92,7 @@ export default function SettingsNotificationsScreen() {
         <SettingRow icon="users" title="Send a test connect request" onPress={() => notifier.test('request')} noChevron />
       </SettingGroup>
       <Txt variant="caption" tone="muted" style={styles.note}>
-        Notifications appear in your phone’s notification bar and on the lock screen, even when Pulse is closed (as long as the mesh is on).
+        Notifications show in the notification bar and on the lock screen.
       </Txt>
 
       <Sheet visible={picking !== null} onClose={() => setPicking(null)} title={picking === 'quietFrom' ? 'Quiet from' : 'Quiet until'} scroll>
@@ -120,10 +119,10 @@ export default function SettingsNotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   warn: {backgroundColor: colors.dangerDim, borderRadius: radius.lg, padding: spacing.lg, marginTop: spacing.lg, gap: spacing.sm},
   warnSub: {marginBottom: spacing.sm},
   note: {marginTop: spacing.md, paddingHorizontal: spacing.xs},
   time: {paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderRadius: radius.md},
   timeOn: {backgroundColor: colors.primary},
-});
+}));

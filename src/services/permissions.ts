@@ -1,4 +1,6 @@
 import {PermissionsAndroid, Platform} from 'react-native';
+import {markExternal} from './appLifecycle';
+import {storage} from './storage';
 
 /**
  * Contextual permission requests. Each is asked separately, after an in-app
@@ -118,13 +120,68 @@ export async function requestLocation(): Promise<PermissionResult> {
   return normalize(status);
 }
 
-/** SEND_SMS — so an SOS can text contacts from the SIM (Android only). */
-export async function requestSms(): Promise<PermissionResult> {
+const IMAGES = 'android.permission.READ_MEDIA_IMAGES';
+const VIDEO = 'android.permission.READ_MEDIA_VIDEO';
+/** Android 14+: "Select photos" gives access to just the ones you picked. Without asking for this, that answer counts as "no". */
+const SELECTED = 'android.permission.READ_MEDIA_VISUAL_USER_SELECTED';
+const sdk = () => Number(Platform.Version);
+
+const GALLERY_PERMS = (): string[] =>
+  sdk() >= 34 ? [IMAGES, VIDEO, SELECTED] : sdk() >= 33 ? [IMAGES, VIDEO] : ['android.permission.READ_EXTERNAL_STORAGE'];
+
+/** Is Pulse already allowed to list your photos and videos (for the attach panel)? Picking only some photos counts. */
+export async function hasGalleryAccess(): Promise<boolean> {
+  if (Platform.OS !== 'android') {
+    return false;
+  }
+  const checks = await Promise.all(GALLERY_PERMS().map(p => PermissionsAndroid.check(p as never)));
+  if (sdk() >= 34) {
+    return (checks[0] && checks[1]) || checks[2];
+  }
+  return checks.every(Boolean);
+}
+
+/** Photos and videos. One system dialog; the app's own screen is not shown first. */
+export async function requestGalleryAccess(): Promise<PermissionResult> {
   if (Platform.OS !== 'android') {
     return 'unavailable';
   }
-  const status = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.SEND_SMS);
-  return normalize(status);
+  markExternal(); // the dialog pauses the app for a moment: that is not "leaving" (no lock, no reset)
+  const res = (await PermissionsAndroid.requestMultiple(GALLERY_PERMS() as never)) as Record<string, string>;
+  const ok = (p: string) => res[p] === PermissionsAndroid.RESULTS.GRANTED;
+  if (sdk() >= 34 ? (ok(IMAGES) && ok(VIDEO)) || ok(SELECTED) : Object.values(res).every(s => s === PermissionsAndroid.RESULTS.GRANTED)) {
+    return 'granted';
+  }
+  return Object.values(res).some(s => s === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) ? 'blocked' : 'denied';
+}
+
+const GALLERY_ASKED = 'perm.galleryAsked';
+
+/**
+ * Called when the paperclip is tapped, BEFORE the attach panel opens, so the chat stays exactly where it is while
+ * Android's dialog is on screen. Asks once, ever: after any answer the panel simply opens (with the grid, or with
+ * Android's own photo picker when access was refused).
+ */
+export async function askGalleryOnce(): Promise<void> {
+  if (storage.getBoolean(GALLERY_ASKED) || (await hasGalleryAccess())) {
+    return;
+  }
+  storage.set(GALLERY_ASKED, true);
+  await requestGalleryAccess();
+}
+
+/** Microphone (and camera for video) — asked inside the app before an internet call opens them. */
+export async function requestCallPermissions(video: boolean): Promise<PermissionResult> {
+  if (Platform.OS !== 'android') {
+    return 'granted';
+  }
+  const wanted = video ? ['android.permission.RECORD_AUDIO', 'android.permission.CAMERA'] : ['android.permission.RECORD_AUDIO'];
+  const res = await PermissionsAndroid.requestMultiple(wanted as never);
+  const statuses = Object.values(res);
+  if (statuses.every(s => s === PermissionsAndroid.RESULTS.GRANTED)) {
+    return 'granted';
+  }
+  return statuses.some(s => s === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) ? 'blocked' : 'denied';
 }
 
 /** RECORD_AUDIO — needed to place or answer an in-app voice call. */

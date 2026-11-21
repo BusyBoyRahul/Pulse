@@ -1,13 +1,21 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect, useRef} from 'react';
 import {Animated, Easing, StyleSheet, View} from 'react-native';
 import Svg, {Circle, Defs, RadialGradient, Stop, Path, Line} from 'react-native-svg';
+import Reanimated, {ZoomIn} from 'react-native-reanimated';
 import {colors} from '@/theme/theme';
 import {Txt} from './Text';
+import {Avatar} from './Avatar';
+import {Icon} from './Icon';
 
 export type RadarBlip = {
   key: string;
   label: string;
   color?: string;
+  /** Their profile photo (the initials show when there is none). */
+  uri?: string;
+  /** Someone who asked to connect: a livelier ring and a small + badge. */
+  pending?: boolean;
 };
 
 type Props = {
@@ -101,32 +109,67 @@ export function Radar({size = 300, blips, active = true}: Props) {
       {/* Center (you) */}
       <View style={[styles.center, {backgroundColor: colors.primary}]} />
 
-      {/* Blips */}
+      {/* Blips: each person is their photo, popping in and gently pulsing */}
       {blips.map(b => {
         const h = hash(b.key);
         const angle = (h % 360) * (Math.PI / 180);
-        const dist = r * (0.34 + ((h >> 3) % 55) / 100); // 0.34–0.89 of radius
-        const x = r + Math.cos(angle) * dist;
-        const y = r + Math.sin(angle) * dist;
-        return (
-          <View key={b.key} style={[styles.blip, {left: x - 5, top: y - 5}]}>
-            <View style={[styles.blipDot, {backgroundColor: b.color ?? colors.meshOnline}]} />
-            <Txt variant="label" tone="secondary" style={styles.blipLabel} numberOfLines={1}>
-              {b.label}
-            </Txt>
-          </View>
-        );
+        const dist = r * (0.4 + ((h >> 3) % 45) / 100); // 0.40-0.85 of radius
+        return <BlipView key={b.key} blip={b} x={r + Math.cos(angle) * dist} y={r + Math.sin(angle) * dist} />;
       })}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const AV = 34;
+const BLIP_W = 76;
+
+function BlipView({blip, x, y}: {blip: RadarBlip; x: number; y: number}) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const color = blip.pending ? colors.primary : blip.color ?? colors.meshOnline;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(pulse, {toValue: 1, duration: blip.pending ? 1300 : 2400, easing: Easing.out(Easing.quad), useNativeDriver: true}));
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, blip.pending]);
+  const ringSize = AV + 10;
+  return (
+    <Reanimated.View entering={ZoomIn.springify().damping(13)} style={[styles.blip, {left: x - BLIP_W / 2, top: y - ringSize / 2}]}>
+      <View style={{width: ringSize, height: ringSize, alignItems: 'center', justifyContent: 'center'}}>
+        <Animated.View
+          style={{
+            position: 'absolute',
+            width: ringSize,
+            height: ringSize,
+            borderRadius: ringSize / 2,
+            borderWidth: 2,
+            borderColor: color,
+            opacity: pulse.interpolate({inputRange: [0, 1], outputRange: [0.55, 0]}),
+            transform: [{scale: pulse.interpolate({inputRange: [0, 1], outputRange: [1, 1.8]})}],
+          }}
+        />
+        <View style={[styles.blipRing, {width: ringSize, height: ringSize, borderRadius: ringSize / 2, borderColor: color}]}>
+          <Avatar name={blip.label} seed={blip.key} uri={blip.uri} size={AV} />
+        </View>
+        {blip.pending ? (
+          <View style={styles.badge}>
+            <Icon name="plus" size={10} color="#FFFFFF" strokeWidth={3} />
+          </View>
+        ) : null}
+      </View>
+      <Txt variant="label" tone="secondary" style={styles.blipLabel} numberOfLines={1}>
+        {blip.label}
+      </Txt>
+    </Reanimated.View>
+  );
+}
+
+const styles = themedStyles(() => StyleSheet.create({
   center: {width: 14, height: 14, borderRadius: 7},
   pulseRing: {position: 'absolute', borderWidth: 2, borderColor: colors.primaryBright},
-  blip: {position: 'absolute', alignItems: 'center', width: 70, marginLeft: -25},
-  blipDot: {width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: colors.bg},
-  blipLabel: {marginTop: 2, maxWidth: 70, textAlign: 'center'},
-});
+  blip: {position: 'absolute', alignItems: 'center', width: BLIP_W},
+  blipRing: {borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg},
+  badge: {position: 'absolute', right: -3, top: -3, width: 16, height: 16, borderRadius: 8, backgroundColor: colors.primary, borderWidth: 1.5, borderColor: colors.bg, alignItems: 'center', justifyContent: 'center'},
+  blipLabel: {marginTop: 2, maxWidth: BLIP_W, textAlign: 'center'},
+}));
 
 export default Radar;

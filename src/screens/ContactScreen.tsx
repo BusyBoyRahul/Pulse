@@ -1,5 +1,6 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect, useMemo, useState} from 'react';
-import {Alert, Image, Pressable, StyleSheet, ToastAndroid, View} from 'react-native';
+import {Pressable, StyleSheet, ToastAndroid, View} from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import {RouteProp, useNavigation, useRoute} from '@react-navigation/native';
 import type {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -21,17 +22,24 @@ import {
   SettingRow,
   SettingGroup,
   SettingLabel,
+  ActionTile,
+  IconTile,
+  MediaStrip,
 } from '@/components';
 import {colors, radius, spacing} from '@/theme/theme';
 import type {RootStackParamList} from '@/navigation/types';
-import {useCallStore} from '@/store/callStore';
+import {placeCall} from '@/net/callRouter';
 import {useChatStore} from '@/store/chatStore';
+import {useGroupsStore} from '@/store/groupsStore';
+import {mediaFiles} from '@/services/mediaFiles';
+import type {MediaVisual} from '@/services/sharedMedia';
 import {usePairingStore} from '@/store/pairingStore';
 import {usePeersStore} from '@/store/peersStore';
 import {usePrefsStore, muteLabel, MUTE_FOREVER} from '@/store/prefsStore';
 import {getIdentity, shortId} from '@/services/identity';
 import {safetyCode} from '@/services/safetyCode';
 import {notifier} from '@/services/notifier';
+import {alertDialog} from '@/components/Dialog';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type R = RouteProp<RootStackParamList, 'Contact'>;
@@ -63,21 +71,7 @@ function ago(ts?: number): string | null {
 }
 
 function RoundAction({icon, label, onPress, on, disabled}: {icon: IconName; label: string; onPress: () => void; on?: boolean; disabled?: boolean}) {
-  return (
-    <View style={[styles.actionWrap, disabled && {opacity: 0.4}]}>
-      <Pressable
-        onPress={onPress}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={({pressed}) => [styles.action, on && styles.actionOn, pressed && {opacity: 0.8}]}>
-        <Icon name={icon} size={22} color={on ? colors.onPrimary : colors.text} />
-      </Pressable>
-      <Txt variant="caption" tone="secondary" style={styles.actionLabel}>
-        {label}
-      </Txt>
-    </View>
-  );
+  return <ActionTile icon={icon} label={label} onPress={onPress} active={on} disabled={disabled} />;
 }
 
 export default function ContactScreen() {
@@ -116,7 +110,16 @@ export default function ContactScreen() {
     }
   }, [isPaired, key]);
 
-  const photos = useMemo(() => (messages ?? []).filter(m => m.type === 'image' && m.image).slice(-9).reverse(), [messages]);
+  // The groups we're both in, so you can see at a glance what you share with this person.
+  const allGroups = useGroupsStore(s => s.groups);
+  const common = useMemo(() => allGroups.filter(g => g.members.includes(key)), [allGroups, key]);
+  const openMedia = (it: MediaVisual) => {
+    if (it.kind === 'photo') {
+      setViewing(it.image);
+    } else if (it.msg.file?.path) {
+      void mediaFiles.open(it.msg.file.path, it.msg.file.mime).then(err => err && ToastAndroid.show('Can’t open this video', ToastAndroid.SHORT));
+    }
+  };
   const code = useMemo(() => safetyCode(getIdentity().publicKey, key), [key]);
 
   const where = online
@@ -130,7 +133,7 @@ export default function ContactScreen() {
   const prefsApi = usePrefsStore.getState();
 
   const message = () => nav.navigate('Conversation', {conversationId: key, kind: 'direct', title: name});
-  const call = () => void useCallStore.getState().start(key, name);
+  const call = () => placeCall(key, name, false);
 
   const setMute = (ms: number | typeof MUTE_FOREVER | null) => {
     prefsApi.mute(key, ms);
@@ -145,7 +148,7 @@ export default function ContactScreen() {
       prefsApi.patch(key, {blocked: false});
       return;
     }
-    Alert.alert(
+    alertDialog(
       `Block ${name}?`,
       'They won’t be able to message or call you, and they’ll disappear from your Nearby list. They are not told.',
       [
@@ -163,13 +166,13 @@ export default function ContactScreen() {
   };
 
   const clearChat = () =>
-    Alert.alert('Clear this chat?', `Deletes every message with ${name} from this phone. They keep their copy.`, [
+    alertDialog('Clear this chat?', `Deletes every message with ${name} from this phone. They keep their copy.`, [
       {text: 'Cancel', style: 'cancel'},
       {text: 'Clear', style: 'destructive', onPress: () => useChatStore.getState().clearConversation(key)},
     ]);
 
   const removeConnection = () =>
-    Alert.alert(
+    alertDialog(
       `Remove ${name}?`,
       'Deletes the chat and the connection. You can connect again later from Nearby.',
       [
@@ -189,7 +192,7 @@ export default function ContactScreen() {
 
   const copyId = () => {
     Clipboard.setString(key);
-    ToastAndroid.show('Mesh id copied', ToastAndroid.SHORT);
+    ToastAndroid.show('Pulse ID copied', ToastAndroid.SHORT);
   };
 
   return (
@@ -232,6 +235,7 @@ export default function ContactScreen() {
         <View style={styles.actions}>
           <RoundAction icon="chat" label="Message" onPress={message} />
           <RoundAction icon="phone" label="Call" onPress={call} disabled={prefs?.allowCalls === false} />
+          <RoundAction icon="video" label="Video" onPress={() => placeCall(key, name, true)} disabled={prefs?.allowCalls === false} />
           <RoundAction icon={muted ? 'bellOff' : 'bell'} label={muted ? 'Unmute' : 'Mute'} on={muted} onPress={() => (muted ? setMute(null) : setMuteOpen(true))} />
           <RoundAction icon="pin" label={prefs?.pinned ? 'Unpin' : 'Pin'} on={!!prefs?.pinned} onPress={() => prefsApi.patch(key, {pinned: !prefs?.pinned})} />
         </View>
@@ -270,16 +274,28 @@ export default function ContactScreen() {
         </View>
       ) : null}
 
-      {isPaired && photos.length > 0 ? (
+      {/* Shared media: a small row that slides sideways, "See all" opens everything. Nothing at all when nothing was shared. */}
+      {isPaired ? <MediaStrip messages={messages ?? []} onOpen={openMedia} onSeeAll={() => nav.navigate('Media', {conversationId: key, title: name})} /> : null}
+
+      {isPaired && common.length > 0 ? (
         <>
-          <SettingLabel>SHARED PHOTOS</SettingLabel>
-          <View style={styles.grid}>
-            {photos.map(m => (
-              <Pressable key={m.id} onPress={() => setViewing(m.image ?? null)} style={styles.tile}>
-                <Image source={{uri: `data:image/jpeg;base64,${m.image}`}} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <SettingLabel>{`GROUPS IN COMMON · ${common.length}`}</SettingLabel>
+          <SettingGroup>
+            {common.map(g => (
+              <Pressable key={g.id} onPress={() => nav.navigate('GroupInfo', {groupId: g.id})} style={({pressed}) => [styles.groupRow, pressed && {backgroundColor: colors.surfaceHover}]} accessibilityRole="button" accessibilityLabel={g.name}>
+                <IconTile icon="users" size={38} color={colors.primary} />
+                <View style={styles.groupText}>
+                  <Txt variant="bodyStrong" numberOfLines={1}>
+                    {g.name}
+                  </Txt>
+                  <Txt variant="caption" tone="muted">
+                    {g.members.length} members
+                  </Txt>
+                </View>
+                <Icon name="chevronRight" size={18} color={colors.textMuted} />
               </Pressable>
             ))}
-          </View>
+          </SettingGroup>
         </>
       ) : null}
 
@@ -310,7 +326,7 @@ export default function ContactScreen() {
               subtitle={prefs?.allowCalls === false ? 'Their calls are declined automatically' : 'They can ring your phone'}
               toggle={{value: prefs?.allowCalls !== false, onChange: v => prefsApi.patch(key, {allowCalls: v})}}
             />
-            <SettingRow icon="lock" title="Lock chat" subtitle="Needs your PIN or fingerprint to open. Hides its preview and notifications" toggle={{value: lockCtl.locked, onChange: () => lockCtl.toggle()}} />
+            <SettingRow icon="lock" title="Lock chat" subtitle="Moves it to Locked chats. Opens with your chat code" toggle={{value: lockCtl.shown, onChange: () => (lockCtl.locked && !lockCtl.shown ? undefined : lockCtl.toggle())}} />
             <SettingRow icon="star" title="Starred messages" onPress={() => nav.navigate('Starred')} />
           </SettingGroup>
         </>
@@ -325,8 +341,8 @@ export default function ContactScreen() {
           value={prefs?.verified ? 'Verified' : undefined}
           onPress={() => setCodeOpen(true)}
         />
-        <SettingRow icon="copy" title="Mesh id" value={shortId(key)} onPress={copyId} noChevron />
-        <SettingRow icon="lock" title="Phone number" subtitle="Pulse never shares phone numbers. You can’t see theirs and they can’t see yours." noChevron />
+        <SettingRow icon="copy" title="Pulse ID" value={shortId(key)} onPress={copyId} noChevron />
+        <SettingRow icon="lock" title="Phone number" subtitle="Pulse never shares phone numbers, theirs or yours" noChevron />
       </SettingGroup>
 
       <SettingLabel>MANAGE</SettingLabel>
@@ -407,7 +423,7 @@ export default function ContactScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   hero: {alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.md},
   name: {marginTop: spacing.lg, maxWidth: '90%'},
   statusRow: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.xs},
@@ -430,9 +446,9 @@ const styles = StyleSheet.create({
   connectBox: {marginTop: spacing.lg},
   connectNote: {marginTop: spacing.sm, paddingHorizontal: spacing.lg},
   blockedBox: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.dangerDim, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.lg},
-  grid: {flexDirection: 'row', flexWrap: 'wrap', gap: 4},
-  tile: {width: '32.5%', aspectRatio: 1, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.surface},
+  groupRow: {flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.md},
+  groupText: {flex: 1, marginLeft: spacing.md},
   choice: {paddingVertical: spacing.md},
   codeBox: {backgroundColor: colors.surface, borderRadius: radius.lg, paddingVertical: spacing.xl, alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border},
   codeRow: {fontVariant: ['tabular-nums'], letterSpacing: 1},
-});
+}));

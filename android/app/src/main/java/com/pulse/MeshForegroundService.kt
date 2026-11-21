@@ -9,19 +9,16 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 
 /**
- * A quiet, ongoing notification whose only job is to keep Pulse's process alive
- * so this phone keeps relaying other people's messages and SOS alerts with the
- * screen off. Without it Android suspends the app within minutes and the
- * A→B→C chain silently breaks at B.
- *
- * During a voice call the same service switches to "call" mode: the notification
- * becomes "Call in progress" with a Hang up button, and the service declares the
- * microphone type — Android silences the mic of an app that has left the screen
- * unless a microphone foreground service is running.
+ * Runs only DURING a voice call: the notification is "Call in progress" with a Hang up button, and the service declares the
+ * microphone type — Android silences the mic of an app that has left the screen unless a microphone foreground service is
+ * running. It no longer runs the rest of the time, so there is no permanent "running in the background" notification
+ * (Android makes any foreground service show one).
  */
 class MeshForegroundService : Service() {
 
   private var inCall = false
+  private var boosting = false
+  private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
   override fun onCreate() {
     super.onCreate()
@@ -36,20 +33,78 @@ class MeshForegroundService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    if (intent?.getStringExtra("mode") == "mesh" && !inCall) {
+      // The person just switched the mesh on: run as a foreground service for a few seconds while the radio starts (this is what
+      // lets Android / Google's Nearby switch Wi-Fi on), then go away. No permanent notification.
+      boosting = true
+      promoteBoost()
+      handler.removeCallbacksAndMessages(null)
+      handler.postDelayed({
+        if (boosting && !inCall) {
+          boosting = false
+          stopForegroundCompat()
+          stopSelf()
+        }
+      }, 12000)
+      return START_NOT_STICKY
+    }
     inCall = intent?.getStringExtra("mode") == "call" || inCall
+    if (!inCall) {
+      // Started for any other reason (an old restart): there is nothing to keep running, so go away without a notice.
+      stopSelf()
+      return START_NOT_STICKY
+    }
     promote()
-    return START_STICKY
+    return START_NOT_STICKY
   }
 
-  /** Switch between the everyday relay notice and the in-call notice. */
+  /** The call began (true) or ended (false). When it ends, the service and its notification end with it. */
   fun setCall(on: Boolean) {
+    boosting = false
     inCall = on
-    promote()
+    if (on) {
+      promote()
+    } else {
+      stopForegroundCompat()
+      stopSelf()
+    }
+  }
+
+  private fun promoteBoost() {
+    NotifyHelper.ensureChannels(this)
+    val n =
+        NotificationCompat.Builder(this, NotifyHelper.CH_MESH)
+            .setContentTitle("Pulse")
+            .setContentText("Starting the mesh…")
+            .setSmallIcon(R.drawable.ic_stat_pulse)
+            .setColor(NotifyHelper.ACCENT)
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .build()
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(NotifyHelper.ONGOING_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+      } else {
+        startForeground(NotifyHelper.ONGOING_ID, n)
+      }
+    } catch (_: Exception) {
+      boosting = false
+      stopSelf()
+    }
+  }
+
+  private fun stopForegroundCompat() {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(Service.STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+    } catch (_: Exception) {}
   }
 
   private fun promote() {
     NotifyHelper.ensureChannels(this)
-    val notification = if (inCall) callNotification() else meshNotification()
+    val notification = callNotification()
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val type =
@@ -60,31 +115,14 @@ class MeshForegroundService : Service() {
         startForeground(NotifyHelper.ONGOING_ID, notification)
       }
     } catch (e: Exception) {
-      if (inCall) {
-        // The microphone type was refused (started from the background): fall back to relay mode.
-        inCall = false
-        try {
-          promote()
-        } catch (_: Exception) {}
-      } else {
-        // Permission not granted yet / background-start restriction: carry on without it.
+      // The microphone type was refused (started from the background): try once without it, else carry on without a service.
+      try {
+        startForeground(NotifyHelper.ONGOING_ID, notification)
+      } catch (_: Exception) {
         stopSelf()
       }
     }
   }
-
-  private fun meshNotification(): Notification =
-      NotificationCompat.Builder(this, NotifyHelper.CH_MESH)
-          .setContentTitle("Pulse mesh is on")
-          .setContentText("Relaying messages and alerts for people nearby")
-          .setSmallIcon(R.drawable.ic_stat_pulse)
-          .setColor(NotifyHelper.ACCENT)
-          .setOngoing(true)
-          .setShowWhen(false)
-          .setPriority(NotificationCompat.PRIORITY_LOW)
-          .setCategory(NotificationCompat.CATEGORY_SERVICE)
-          .setContentIntent(NotifyHelper.openApp(this, 0, mapOf("action" to "openNearby")))
-          .build()
 
   private fun callNotification(): Notification =
       NotificationCompat.Builder(this, NotifyHelper.CH_CALL_ONGOING)

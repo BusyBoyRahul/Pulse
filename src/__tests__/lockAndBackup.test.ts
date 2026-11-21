@@ -5,7 +5,7 @@ import {sealBackup, openBackup, backupFileName} from '@/services/backup';
 import {storage, snapshotStorage, restoreStorage} from '@/services/storage';
 import {kindOfMime, formatBytes, formatDuration} from '@/services/mediaFiles';
 
-const resetLock = () => useLockStore.setState({saved: null, hydrated: false, appLocked: false, unlockedChats: {}, bioAvailable: false});
+const resetLock = () => useLockStore.setState({saved: {app: null, chat: null}, hydrated: false, appLocked: false, chatsUnlocked: false, bioAvailable: false});
 
 describe('PIN lock', () => {
   beforeEach(() => {
@@ -17,56 +17,96 @@ describe('PIN lock', () => {
 
   it('accepts the right PIN, rejects a wrong one, and never stores the PIN itself', () => {
     const lock = useLockStore.getState();
-    expect(lock.hasPin()).toBe(false);
-    lock.setPin('4417');
-    expect(useLockStore.getState().hasPin()).toBe(true);
-    expect(useLockStore.getState().verify('4417')).toBe('ok');
-    expect(useLockStore.getState().verify('1234')).toBe('wrong');
-    const saved = useLockStore.getState().saved!;
+    expect(lock.hasPin('app')).toBe(false);
+    lock.setPin('app', '4417');
+    expect(useLockStore.getState().hasPin('app')).toBe(true);
+    expect(useLockStore.getState().verify('app', '4417')).toBe('ok');
+    expect(useLockStore.getState().verify('app', '1234')).toBe('wrong');
+    const saved = useLockStore.getState().saved.app!;
     expect(JSON.stringify(saved)).not.toContain('4417');
     expect(saved.hash.length).toBeGreaterThan(40);
   });
 
   it('uses a fresh random salt every time a PIN is set', () => {
     const lock = useLockStore.getState();
-    lock.setPin('4417');
-    const first = useLockStore.getState().saved!;
-    useLockStore.getState().setPin('4417');
-    const second = useLockStore.getState().saved!;
+    lock.setPin('app', '4417');
+    const first = useLockStore.getState().saved.app!;
+    useLockStore.getState().setPin('app', '4417');
+    const second = useLockStore.getState().saved.app!;
     expect(second.salt).not.toBe(first.salt);
     expect(second.hash).not.toBe(first.hash);
   });
 
   it('five wrong guesses in a row lock you out for 30 seconds, even for the right PIN', () => {
-    useLockStore.getState().setPin('4417');
+    useLockStore.getState().setPin('app', '4417');
     for (let i = 0; i < 4; i++) {
-      expect(useLockStore.getState().verify('0000')).toBe('wrong');
+      expect(useLockStore.getState().verify('app', '0000')).toBe('wrong');
     }
-    expect(useLockStore.getState().verify('0000')).toBe('wait');
-    expect(useLockStore.getState().verify('4417')).toBe('wait');
-    expect(useLockStore.getState().waitSeconds()).toBeGreaterThan(0);
+    expect(useLockStore.getState().verify('app', '0000')).toBe('wait');
+    expect(useLockStore.getState().verify('app', '4417')).toBe('wait');
+    expect(useLockStore.getState().waitSeconds('app')).toBeGreaterThan(0);
     jest.setSystemTime(Date.now() + 31_000);
-    expect(useLockStore.getState().waitSeconds()).toBe(0);
-    expect(useLockStore.getState().verify('4417')).toBe('ok');
+    expect(useLockStore.getState().waitSeconds('app')).toBe(0);
+    expect(useLockStore.getState().verify('app', '4417')).toBe('ok');
   });
 
-  it('keeps your settings when the PIN is changed, and removing the PIN unlocks every locked chat', () => {
-    useLockStore.getState().setPin('4417');
-    useLockStore.getState().setAppLock(true);
+  it('keeps the app lock settings when the PIN is changed', () => {
+    useLockStore.getState().setPin('app', '4417');
     useLockStore.getState().setAutoLock(5 * 60_000);
-    useLockStore.getState().setPin('9902');
-    expect(useLockStore.getState().saved).toMatchObject({appLock: true, autoLockMs: 5 * 60_000});
-    expect(useLockStore.getState().verify('9902')).toBe('ok');
-    expect(useLockStore.getState().verify('4417')).toBe('wrong');
+    useLockStore.getState().setPin('app', '9902');
+    expect(useLockStore.getState().saved.app).toMatchObject({autoLockMs: 5 * 60_000});
+    expect(useLockStore.getState().verify('app', '9902')).toBe('ok');
+    expect(useLockStore.getState().verify('app', '4417')).toBe('wrong');
+  });
+
+  it('the app lock and the chat lock are independent, each with its own PIN', () => {
+    // chat lock works with no app lock at all
+    useLockStore.getState().setPin('chat', '1111');
+    expect(useLockStore.getState().hasPin('app')).toBe(false);
+    expect(useLockStore.getState().verify('chat', '1111')).toBe('ok');
+
+    useLockStore.getState().setPin('app', '2222');
+    expect(useLockStore.getState().verify('app', '1111')).toBe('wrong');
+    expect(useLockStore.getState().verify('chat', '2222')).toBe('wrong');
+    expect(useLockStore.getState().verify('chat', '1111')).toBe('ok');
+
+    // wrong guesses on one lock don't count against the other
+    for (let i = 0; i < 5; i++) {
+      useLockStore.getState().verify('app', '0000');
+    }
+    expect(useLockStore.getState().waitSeconds('app')).toBeGreaterThan(0);
+    expect(useLockStore.getState().waitSeconds('chat')).toBe(0);
+    expect(useLockStore.getState().verify('chat', '1111')).toBe('ok');
+  });
+
+  it('removing the chat lock moves every locked chat back to the list, and leaves the app lock alone', () => {
+    useLockStore.getState().setPin('app', '2222');
+    useLockStore.getState().setPin('chat', '1111');
+    useLockStore.getState().setHidden(true);
+    expect(useLockStore.getState().saved.chat).toMatchObject({hidden: true});
+    // changing the code keeps "hidden"
+    useLockStore.getState().setPin('chat', '3333');
+    expect(useLockStore.getState().saved.chat).toMatchObject({hidden: true});
 
     usePrefsStore.getState().patchMany(['a', 'b'], {locked: true});
-    useLockStore.getState().unlockChat('a');
-    expect(useLockStore.getState().unlockedChats.a).toBe(true);
-    useLockStore.getState().removePin();
-    expect(useLockStore.getState().hasPin()).toBe(false);
+    useLockStore.getState().unlockChats();
+    expect(useLockStore.getState().chatsUnlocked).toBe(true);
+    useLockStore.getState().removePin('chat');
+    expect(useLockStore.getState().hasPin('chat')).toBe(false);
+    expect(useLockStore.getState().chatsUnlocked).toBe(false);
     expect(usePrefsStore.getState().prefs.a?.locked).toBeUndefined();
     expect(usePrefsStore.getState().prefs.b?.locked).toBeUndefined();
-    expect(useLockStore.getState().appLocked).toBe(false);
+    expect(useLockStore.getState().hasPin('app')).toBe(true);
+  });
+
+  it('matches() checks a code without counting a miss, so searching never locks you out', () => {
+    useLockStore.getState().setPin('chat', '4417');
+    for (let i = 0; i < 10; i++) {
+      expect(useLockStore.getState().matches('chat', '0000')).toBe(false);
+    }
+    expect(useLockStore.getState().waitSeconds('chat')).toBe(0);
+    expect(useLockStore.getState().matches('chat', '4417')).toBe(true);
+    expect(useLockStore.getState().matches('app', '4417')).toBe(false); // no app lock set
   });
 });
 

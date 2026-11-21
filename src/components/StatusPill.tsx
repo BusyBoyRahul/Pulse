@@ -1,3 +1,4 @@
+import {themedStyles} from '@/theme/themed';
 import React from 'react';
 import {StyleSheet, View, ViewStyle} from 'react-native';
 import {colors, radius, spacing} from '@/theme/theme';
@@ -9,17 +10,12 @@ type Props = {
   style?: ViewStyle;
 };
 
-const dot: Record<NonNullable<Props['tone']>, string> = {
-  online: colors.meshOnline,
-  relay: colors.meshRelay,
-  danger: colors.danger,
-  idle: colors.textMuted,
-};
+const dot = (tone: NonNullable<Props['tone']>): string => ({online: colors.meshOnline, relay: colors.meshRelay, danger: colors.danger, idle: colors.textMuted})[tone];
 
 export function StatusPill({label, tone = 'idle', style}: Props) {
   return (
     <View style={[styles.pill, style]}>
-      <View style={[styles.dot, {backgroundColor: dot[tone]}]} />
+      <View style={[styles.dot, {backgroundColor: dot(tone)}]} />
       <Txt variant="caption" tone="secondary">
         {label}
       </Txt>
@@ -27,7 +23,7 @@ export function StatusPill({label, tone = 'idle', style}: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -40,6 +36,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   dot: {width: 8, height: 8, borderRadius: 4, marginRight: spacing.sm},
-});
+}));
 
 export default StatusPill;

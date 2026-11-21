@@ -7,6 +7,7 @@ import type {RowDataPacket} from '../db/connection';
 import {asyncHandler, HttpError} from '../middleware/errors';
 import {requireAuth, signToken, AuthedRequest} from '../middleware/auth';
 import twilioService from '../services/twilioService';
+import {signAttestation} from '../services/attest';
 
 export const authRouter = Router();
 
@@ -91,8 +92,11 @@ authRouter.post(
     }
 
     const token = signToken(user.id, user.phone_number);
+    // A signed certificate the app can show to others (checked offline with the public key).
+    const attestation = meshPublicKey ? signAttestation(user.phone_number, meshPublicKey) : null;
     res.json({
       token,
+      attestation,
       user: {id: user.id, phone: user.phone_number, displayName: user.display_name},
     });
   }),

@@ -3,6 +3,7 @@ import config from '@/config';
 import type {SosState} from '@/types';
 import {newPacketId} from '@/mesh/relayProtocol';
 import {getMeshEngine} from '@/mesh/bleManager';
+import {setSosBoost, grantPowerOn} from '@/mesh/radioGate';
 import locationService, {Fix} from '@/services/locationService';
 import {buildSosBroadcast, encodeSosBroadcast} from '@/sos/sosPacket';
 import {smsService, SosSmsResult} from '@/services/smsService';
@@ -102,6 +103,12 @@ async function dispatch(packetId: string, note?: string): Promise<void> {
   const trusted = useContactsStore.getState().contacts;
   const fix = store.getState().fix;
 
+  // The Bluetooth / Wi-Fi mesh is off until the person turns it on. Pressing SOS asks for it for this alert (the engine keeps the
+  // alert and hands it to every phone that comes into range) and lets go of it afterwards.
+  grantPowerOn(); // pressing SOS is their own action: the radio may switch Wi-Fi / Bluetooth on for it
+  setSosBoost(true);
+  await new Promise<void>(resolve => setTimeout(resolve, 1500)); // a moment for the radio to come up before the alert is sent
+
   // 1) Broadcast a help alert to every nearby Pulse phone (readable — that's the
   //    point). Multi-hop so it reaches phones a couple of relays away too.
   try {
@@ -117,6 +124,8 @@ async function dispatch(packetId: string, note?: string): Promise<void> {
   } catch {
     /* mesh unavailable — SMS below may still reach contacts */
   }
+
+  setTimeout(() => setSosBoost(false), 10 * 60 * 1000);
 
   // 2) Also text trusted contacts from the SIM (secondary, optional).
   let smsResult: SosSmsResult = {sent: 0, failed: 0, supported: smsService.supported};

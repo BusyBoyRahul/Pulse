@@ -1,15 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Status-bar icon for Pulse notifications: a heartbeat line. Must be a flat white shape; Android tints it. -->
+<!-- Status-bar icon for Pulse notifications: the Pulse mark. Must be a flat white shape; Android tints it. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M2,12 L7,12 L9.5,5 L14,19 L16.5,12 L22,12"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+    <group
+        android:scaleX="0.02222"
+        android:scaleY="0.02222"
+        android:translateX="-1.778"
+        android:translateY="-2.111">
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M480 288H760C925 288 1025 420 1025 610C1025 810 905 933 740 933C650 933 560 925 470 898L300 980L338 832C255 770 217 695 217 610C217 430 330 288 480 288Z"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="85.1"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M325 630H430L490 565L550 745L640 450L722 735L785 635H910"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="69"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
 </vector>

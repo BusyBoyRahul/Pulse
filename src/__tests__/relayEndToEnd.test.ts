@@ -5,170 +5,7 @@
  * calls), only the radio and the microphone are faked.
  */
 import naclUtil from 'tweetnacl-util';
-import type {MeshTransport, TransportState} from '@/mesh/transport/types';
-import type {NearbyDevice} from '@/types';
-
-class Bus {
-  /** Lose some packets on the way to a phone (tests lost-piece recovery). */
-  drop: ((to: string) => boolean) | null = null;
-  adj = new Map<string, Set<string>>();
-  nodes = new Map<string, Radio>();
-  add(id: string) {
-    const r = new Radio(id, this);
-    this.nodes.set(id, r);
-    this.adj.set(id, new Set());
-    return r;
-  }
-  link(a: string, b: string) {
-    this.adj.get(a)!.add(b);
-    this.adj.get(b)!.add(a);
-    this.nodes.get(a)!.changed();
-    this.nodes.get(b)!.changed();
-  }
-  unlink(a: string, b: string) {
-    this.adj.get(a)!.delete(b);
-    this.adj.get(b)!.delete(a);
-    this.nodes.get(a)!.changed();
-    this.nodes.get(b)!.changed();
-  }
-}
-
-class Radio implements MeshTransport {
-  state: TransportState = 'active';
-  wire = new Set<(w: string, f: string) => void>();
-  dev = new Set<(d: NearbyDevice[]) => void>();
-  constructor(readonly id: string, private bus: Bus) {}
-  async start() {}
-  async stop() {}
-  async broadcast(w: string, except?: string) {
-    for (const n of this.bus.adj.get(this.id) ?? []) {
-      if (n !== except && !(this.bus.drop && this.bus.drop(n))) {
-        this.bus.nodes.get(n)!.wire.forEach(h => h(w, this.id));
-      }
-    }
-  }
-  onWire(h: (w: string, f: string) => void) {
-    this.wire.add(h);
-    return () => this.wire.delete(h);
-  }
-  onDevices(h: (d: NearbyDevice[]) => void) {
-    this.dev.add(h);
-    return () => this.dev.delete(h);
-  }
-  onStateChange() {
-    return () => {};
-  }
-  changed() {
-    const list = [...(this.bus.adj.get(this.id) ?? [])].map(deviceId => ({deviceId, rssi: null, lastSeen: 0}));
-    this.dev.forEach(h => h(list));
-  }
-}
-
-function makePhone(id: string, bus: Bus) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let api: any;
-  jest.isolateModules(() => {
-    const audio = {
-      available: true,
-      frameCb: null as null | ((f: string) => void),
-      start: jest.fn(async () => true),
-      stop: jest.fn(async () => true),
-      setMuted: jest.fn(),
-      setSpeaker: jest.fn(),
-      playFrame: jest.fn(),
-      showIncomingCall: jest.fn(),
-      clearIncomingCall: jest.fn(),
-      onFrame(cb: (f: string) => void) {
-        audio.frameCb = cb;
-        return () => {};
-      },
-      onLevel: () => () => {},
-    };
-    const notify = {
-      show: jest.fn(),
-      cancel: jest.fn(),
-      cancelAll: jest.fn(),
-      ready: jest.fn(async () => []),
-      areEnabled: jest.fn(async () => true),
-      openChannelSettings: jest.fn(),
-      setSecure: jest.fn(),
-      isBatteryUnrestricted: jest.fn(async () => true),
-      requestBatteryUnrestricted: jest.fn(),
-      addListener: jest.fn(),
-      removeListeners: jest.fn(),
-    };
-    const files = new Map<string, Uint8Array>();
-    const mediaNative = {
-      filesDir: jest.fn(async () => '/files'),
-      allocate: jest.fn(async (p: string, size: number) => {
-        files.set(p, new Uint8Array(size));
-        return true;
-      }),
-      readChunk: jest.fn(async (p: string, off: number, len: number) => {
-        const d = files.get(p);
-        return d ? naclUtil.encodeBase64(d.slice(off, off + len)) : '';
-      }),
-      writeChunk: jest.fn(async (p: string, off: number, data: string) => {
-        const bytes = naclUtil.decodeBase64(data);
-        let d = files.get(p) ?? new Uint8Array(0);
-        if (d.length < off + bytes.length) {
-          const bigger = new Uint8Array(off + bytes.length);
-          bigger.set(d);
-          d = bigger;
-        }
-        d.set(bytes, off);
-        files.set(p, d);
-        return true;
-      }),
-      fileInfo: jest.fn(async (p: string) => ({exists: files.has(p), size: files.get(p)?.length ?? 0})),
-      deleteFile: jest.fn(async (p: string) => files.delete(p)),
-      copyFile: jest.fn(async (p: string) => {
-        files.set(p + '.copy', (files.get(p) as Uint8Array).slice());
-        return p + '.copy';
-      }),
-      mediaInfo: jest.fn(async () => ({})),
-      usage: jest.fn(async () => ({count: files.size, bytes: 0})),
-      clearAll: jest.fn(async () => {
-        files.clear();
-        return true;
-      }),
-      biometricAvailable: jest.fn(async () => false),
-      biometricAuth: jest.fn(async () => false),
-      restartApp: jest.fn(),
-      addListener: jest.fn(),
-      removeListeners: jest.fn(),
-    };
-    require('react-native').NativeModules.MediaFiles = mediaNative;
-    require('react-native').NativeModules.PulseNotify = notify;
-    jest.doMock('@/lan/lanManager', () => ({lanManager: {isOnLan: () => false, sendTo: () => false}}));
-    jest.doMock('@/services/callAudio', () => ({callAudio: audio}));
-    jest.doMock('@/services/permissions', () => ({requestMicrophone: async () => 'granted'}));
-
-    const {getMeshEngine} = require('@/mesh/bleManager');
-    const engine = getMeshEngine(bus.add(id));
-    const {getIdentity} = require('@/services/identity');
-    const session = require('@/store/sessionStore').useSessionStore;
-    session.setState({profileName: `Phone ${id}`});
-    api = {
-      id,
-      audio,
-      notify,
-      files,
-      session,
-      engine,
-      pub: getIdentity().publicKey as string,
-      chat: require('@/store/chatStore').useChatStore,
-      pairing: require('@/store/pairingStore').usePairingStore,
-      groups: require('@/store/groupsStore').useGroupsStore,
-      peers: require('@/store/peersStore').usePeersStore,
-      call: require('@/store/callStore').useCallStore,
-      prefs: require('@/store/prefsStore').usePrefsStore,
-      settings: require('@/store/settingsStore').useSettingsStore,
-      bridge: require('@/services/notificationBridge'),
-    };
-  });
-  return api;
-}
+import {Bus, makePhone} from '@/testing/meshHarness';
 
 const tick = (ms: number) => jest.advanceTimersByTimeAsync(ms);
 
@@ -616,6 +453,102 @@ describe('pairing is required, photo privacy and disappearing messages (A — B 
     const mine = A.chat.getState().byConversation[C.pub][0];
     expect(mine.opened).toBe(true);
     expect(mine.image).toBeUndefined();
+  });
+
+  it('a caption travels inside the photo message (one message, not two), and a timed photo keeps its seconds', async () => {
+    const {A, C} = await linked();
+    await A.chat.getState().sendImage(C.pub, 'direct', 'QUJD'.repeat(3000), undefined, {caption: '  Trip to Goa  '});
+    await A.chat.getState().sendImage(C.pub, 'direct', 'QUJD'.repeat(3000), undefined, {viewOnce: true, viewSecs: 10, caption: 'quick'});
+    await tick(300);
+    const list = C.chat.getState().byConversation[A.pub];
+    expect(list).toHaveLength(2); // two photos, no separate caption messages
+    expect(list[0].caption).toBe('Trip to Goa');
+    expect(list[0].viewOnce).toBeUndefined();
+    expect(list[1].viewOnce).toBe(true);
+    expect(list[1].viewSecs).toBe(10);
+    expect(list[1].caption).toBe('quick');
+    expect(A.chat.getState().byConversation[C.pub][0].caption).toBe('Trip to Goa');
+  });
+
+  it('a shared contact arrives as a card with the person’s key and name; a card with a bad key is ignored', async () => {
+    const {A, B, C} = await linked();
+    await A.chat.getState().sendContact(C.pub, 'direct', {key: B.pub, name: '  Priya  '});
+    await tick(200);
+    const card = C.chat.getState().byConversation[A.pub][0];
+    expect(card.type).toBe('contact');
+    expect(card.contact).toEqual({key: B.pub, name: 'Priya'});
+    await A.chat.getState().sendContact(C.pub, 'direct', {key: 'not-a-key', name: 'Nobody'});
+    await tick(200);
+    expect(C.chat.getState().byConversation[A.pub]).toHaveLength(1); // the bad one never left
+  });
+
+  it('polls follow their own rules: multiple answers toggle, a quiz answer is final, bad options and closed polls are ignored', async () => {
+    const {A, C} = await linked();
+    await A.chat.getState().sendPoll(C.pub, 'direct', 'Which?', ['a', 'b', 'c'], {multi: true, anon: true});
+    await A.chat.getState().sendPoll(C.pub, 'direct', '2+2?', ['3', '4'], {quiz: 1, explain: 'Maths'});
+    await A.chat.getState().sendPoll(C.pub, 'direct', 'Soon over', ['x', 'y'], {closeInMs: 60_000});
+    await tick(300);
+    const [multi, quiz, closing] = C.chat.getState().byConversation[A.pub];
+    expect(multi.poll).toMatchObject({multi: true, anon: true});
+    expect(quiz.poll).toMatchObject({quiz: 1, explain: 'Maths'});
+    expect(quiz.poll.multi).toBeUndefined();
+    expect(closing.poll.closesAt).toBeGreaterThan(Date.now());
+
+    const vote = (m: {id: string}, opt: number) => C.chat.getState().vote(A.pub, 'direct', m.id, opt);
+    const votes = (m: {id: string}) => C.chat.getState().votes[m.id] ?? {};
+    await vote(multi, 0);
+    await vote(multi, 2);
+    expect(votes(multi)[0]).toContain('You');
+    expect(votes(multi)[2]).toContain('You');
+    await vote(multi, 0); // tapping again takes it back
+    expect(votes(multi)[0]).not.toContain('You');
+    await vote(multi, 9); // not a real option
+    expect(votes(multi)[9]).toBeUndefined();
+
+    await vote(quiz, 0);
+    await vote(quiz, 1); // final: the second answer does not count
+    expect(votes(quiz)[0]).toContain('You');
+    expect(votes(quiz)[1] ?? []).not.toContain('You');
+
+    await tick(70_000); // the closing time passes
+    await vote(closing, 0);
+    expect(votes(closing)[0]).toBeUndefined();
+  });
+
+  it('photos sent together arrive as one album (same group, right order); a nonsense album tag is dropped', async () => {
+    const {A, C} = await linked();
+    const photo = 'QUJD'.repeat(3000);
+    for (let i = 0; i < 3; i++) {
+      await A.chat.getState().sendImage(C.pub, 'direct', photo, undefined, {album: {g: 'abc123', i, n: 3}, caption: i === 0 ? 'Trip' : undefined});
+    }
+    await A.chat.getState().sendImage(C.pub, 'direct', photo, undefined, {album: {g: 'bad id!', i: 0, n: 2}});
+    await A.chat.getState().sendImage(C.pub, 'direct', photo, undefined, {album: {g: 'zzz999', i: 5, n: 2}});
+    await tick(500);
+    const at = C.chat.getState().byConversation[A.pub];
+    expect(at).toHaveLength(5);
+    expect(at.slice(0, 3).map((m: {album?: unknown}) => m.album)).toEqual([
+      {g: 'abc123', i: 0, n: 3},
+      {g: 'abc123', i: 1, n: 3},
+      {g: 'abc123', i: 2, n: 3},
+    ]);
+    expect(at[0].caption).toBe('Trip');
+    expect(at[1].caption).toBeUndefined();
+    expect(at[3].album).toBeUndefined(); // group id with spaces/symbols
+    expect(at[4].album).toBeUndefined(); // position outside the album
+  });
+
+  it('forwarding photos together keeps them together as a new album', async () => {
+    const {A, C} = await linked();
+    const photo = 'QUJD'.repeat(3000);
+    await A.chat.getState().sendImage(C.pub, 'direct', photo);
+    await A.chat.getState().sendImage(C.pub, 'direct', photo);
+    const mine = A.chat.getState().byConversation[C.pub];
+    for (let i = 0; i < mine.length; i++) {
+      await A.chat.getState().forwardMessage(C.pub, 'direct', mine[i], {g: 'fwd777', i, n: mine.length});
+    }
+    await tick(500);
+    const forwarded = C.chat.getState().byConversation[A.pub].filter((m: {album?: {g: string}}) => m.album?.g === 'fwd777');
+    expect(forwarded).toHaveLength(2);
   });
 
   it('a normal photo is not marked spoiler or view-once, and cannot be “opened” away', async () => {

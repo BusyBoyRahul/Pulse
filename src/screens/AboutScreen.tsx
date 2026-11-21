@@ -1,6 +1,7 @@
+import {themedStyles} from '@/theme/themed';
 import React from 'react';
 import {Linking, Pressable, StyleSheet, View} from 'react-native';
-import {Screen, Txt, Card, Button, Icon, PulseLogo, Gradient} from '@/components';
+import {Screen, Txt, Card, Button, Icon, PulseLogo, Reveal} from '@/components';
 import {colors, radius, spacing} from '@/theme/theme';
 import {sharePulseApp} from '@/services/appShare';
 
@@ -14,21 +15,21 @@ export default function AboutScreen() {
 
   return (
     <Screen scroll padded={false} edges={['left', 'right']} bottomClear={false}>
-      <Gradient colors={[colors.surfaceRaised, colors.bg]} angle="vertical" style={styles.hero}>
-        <PulseLogo size={92} />
+      <Reveal kind="fade" style={styles.hero}>
+        <PulseLogo size={104} />
         <Txt variant="title" style={styles.name}>
           Pulse
         </Txt>
         <Txt variant="caption" tone="muted">
-          Offline mesh safety
+          Private messenger · Bluetooth, Wi-Fi and internet
         </Txt>
         <View style={styles.badge}>
-          <Icon name="lock" size={13} color={colors.success} />
-          <Txt variant="label" tone="success">
-            100% OFFLINE · NO SERVER
+          <Icon name="lock" size={13} color={colors.primaryBright} />
+          <Txt variant="label" tone="accent">
+            END-TO-END ENCRYPTED · NO SERVER OF OURS
           </Txt>
         </View>
-      </Gradient>
+      </Reveal>
 
       <View style={styles.body}>
         <Pressable onPress={openSite}>
@@ -52,12 +53,7 @@ export default function AboutScreen() {
         </Pressable>
 
         <Button label="Visit creoteck.com" onPress={openSite} style={styles.cta} />
-        <Button
-          label="Share Pulse"
-          variant="secondary"
-          onPress={share}
-          icon={<Icon name="send" size={18} color={colors.text} />}
-        />
+        <Button label="Share Pulse" variant="secondary" onPress={share} />
 
         <Txt variant="caption" tone="muted" center style={styles.version}>
           Pulse v1.0 · © {'2026'} Creoteck
@@ -67,7 +63,7 @@ export default function AboutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   hero: {alignItems: 'center', paddingTop: spacing.xxl, paddingBottom: spacing.xl},
   name: {marginTop: spacing.md},
   badge: {
@@ -75,9 +71,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: spacing.lg,
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.primaryDim,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
@@ -109,4 +103,4 @@ const styles = StyleSheet.create({
   },
   cta: {marginBottom: spacing.md},
   version: {marginTop: spacing.xl},
-});
+}));

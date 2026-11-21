@@ -1,5 +1,7 @@
 import {launchImageLibrary, launchCamera, ImageLibraryOptions} from 'react-native-image-picker';
 import {markExternal} from '@/services/appLifecycle';
+import {mediaFiles} from '@/services/mediaFiles';
+import {STATUS_PHOTO_MAX} from '@/store/statusStore';
 
 /**
  * Profile-picture picking. Uses the OS photo picker (no storage permission on
@@ -44,10 +46,41 @@ export async function takeProfilePhoto(): Promise<ProfilePhoto | null> {
   return toProfilePhoto(await launchCamera({...opts, saveToPhotos: false}));
 }
 
+/** A small photo for a Status update (must fit one encrypted message). */
+type StatusPhotoResult = {ok: true; base64: string} | {ok: false; reason: 'cancelled' | 'too-large' | 'error'};
+
+export async function pickStatusPhoto(): Promise<StatusPhotoResult> {
+  markExternal();
+  return toStatusPhoto(await launchImageLibrary({mediaType: 'photo', quality: 0.8, maxWidth: 1000, maxHeight: 1000, includeBase64: true, selectionLimit: 1}));
+}
+
+/** Take a Status photo with the camera. */
+export async function takeStatusPhoto(): Promise<StatusPhotoResult> {
+  markExternal();
+  return toStatusPhoto(await launchCamera({mediaType: 'photo', quality: 0.8, maxWidth: 1000, maxHeight: 1000, includeBase64: true, saveToPhotos: false}));
+}
+
+async function toStatusPhoto(res: Awaited<ReturnType<typeof launchImageLibrary>>): Promise<StatusPhotoResult> {
+  if (res.didCancel) {
+    return {ok: false, reason: 'cancelled'};
+  }
+  const b64 = res.assets?.[0]?.base64;
+  if (res.errorCode || !b64) {
+    return {ok: false, reason: 'error'};
+  }
+  // Any picture is fine: it is shrunk until it fits a Status (never "too detailed").
+  const limit = Math.floor(STATUS_PHOTO_MAX * 0.92);
+  if (b64.length <= limit) {
+    return {ok: true, base64: b64};
+  }
+  const fitted = await mediaFiles.fitPhoto(b64, limit);
+  return fitted && fitted.length <= STATUS_PHOTO_MAX ? {ok: true, base64: fitted} : {ok: false, reason: 'too-large'};
+}
+
 // Generous ceiling — media is streamed in chunks over the mesh (Nearby upgrades
 // to Wi-Fi for bandwidth), so full photos are fine; this just avoids absurd
 // multi-MB sends that would take too long.
-const MAX_PHOTO_BYTES = 2_500_000;
+export const MAX_PHOTO_BYTES = 2_500_000;
 
 const chatPhotoOpts: ImageLibraryOptions = {
   mediaType: 'photo',
@@ -90,6 +123,23 @@ async function toChatPhoto(
 export async function pickChatPhoto(): Promise<ChatPhotoResult> {
   markExternal();
   return toChatPhoto(await launchImageLibrary(chatPhotoOpts));
+}
+
+/** Pick up to `limit` full-quality photos at once. `skipped` counts the ones that were too large or unreadable. */
+export async function pickChatPhotos(
+  limit: number,
+): Promise<{ok: true; photos: string[]; skipped: number} | {ok: false; reason: 'cancelled' | 'error'}> {
+  markExternal();
+  const res = await launchImageLibrary({...chatPhotoOpts, selectionLimit: limit});
+  if (res.didCancel) {
+    return {ok: false, reason: 'cancelled'};
+  }
+  if (res.errorCode) {
+    return {ok: false, reason: 'error'};
+  }
+  const assets = res.assets ?? [];
+  const photos = assets.map(a => a.base64).filter((b): b is string => !!b && b.length <= MAX_PHOTO_BYTES);
+  return {ok: true, photos, skipped: assets.length - photos.length};
 }
 
 /** Take a chat photo with the camera. */

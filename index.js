@@ -1,11 +1,13 @@
 /**
- * Pulse — offline mesh safety app.
+ * Pulse — private messenger.
  * Entry point registered with the native app shell.
  */
-// Must be first: provides crypto.getRandomValues for tweetnacl's key/nonce gen.
+// Must be first: gesture handler needs to hook in before anything else renders.
+import 'react-native-gesture-handler';
+// Provides crypto.getRandomValues for tweetnacl's key/nonce generation.
 import 'react-native-get-random-values';
 import {AppRegistry} from 'react-native';
-import App from './App';
+import Boot from './Boot';
 import {name as appName} from './app.json';
 
-AppRegistry.registerComponent(appName, () => App);
+AppRegistry.registerComponent(appName, () => Boot);

@@ -1,7 +1,10 @@
+import {themedStyles} from '@/theme/themed';
 import React from 'react';
 import {ScrollView, StyleSheet, View, ViewStyle, StatusBar} from 'react-native';
 import {Edge, SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
-import {colors, spacing} from '@/theme/theme';
+import {HeaderHeightContext} from '@react-navigation/elements';
+import {colors, spacing, themeInfo} from '@/theme/theme';
+import {Aurora} from './Aurora';
 
 type Props = {
   children: React.ReactNode;
@@ -15,17 +18,18 @@ type Props = {
    * pass ['left','right'] or the header + inset stack into a double gap.
    */
   edges?: Edge[];
-  /** Extra bottom clearance for the raised SOS tab button (tab screens only). */
+  /** Extra bottom clearance for the floating tab bar (tab screens only). */
   bottomClear?: boolean;
+  /** The drifting colour glows behind the page (on by default). */
+  aurora?: boolean;
 };
 
-// Clearance so nothing sits under the raised SOS tab button / gesture bar.
-const BOTTOM_CLEARANCE = 40;
+// Clearance so nothing sits under the floating tab bar / gesture bar.
+const BOTTOM_CLEARANCE = 96;
 
 /**
- * App-wide page container. Owns the safe area, status bar and the standard
- * gutter. Bottom padding clears both the device gesture bar and the raised
- * SOS button in the footer tab bar, so content is never obscured.
+ * App-wide page container. Owns the safe area, status bar, the soft animated
+ * background and the standard gutter.
  */
 export function Screen({
   children,
@@ -35,15 +39,19 @@ export function Screen({
   footer,
   edges = ['top', 'left', 'right'],
   bottomClear = true,
+  aurora = true,
 }: Props) {
   const insets = useSafeAreaInsets();
+  // Under a (transparent) native header: start below it, but let the background run behind it.
+  const headerH = React.useContext(HeaderHeightContext) ?? 0;
   const bottom = Math.max(insets.bottom, bottomClear ? BOTTOM_CLEARANCE : insets.bottom);
 
   const inner = <View style={[padded && styles.padded, styles.grow, style]}>{children}</View>;
 
   return (
-    <SafeAreaView style={styles.safe} edges={edges}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    <SafeAreaView style={[styles.safe, !edges.includes('top') && headerH > 0 ? {paddingTop: headerH} : null]} edges={edges}>
+      <StatusBar barStyle={themeInfo.isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      {aurora ? <Aurora /> : null}
       {scroll ? (
         <ScrollView
           style={styles.grow}
@@ -62,17 +70,15 @@ export function Screen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: {flex: 1, backgroundColor: colors.bg},
   grow: {flex: 1},
   padded: {paddingHorizontal: spacing.xl},
   scrollContent: {flexGrow: 1},
   footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
     paddingTop: spacing.lg,
   },
   footerPad: {paddingHorizontal: spacing.xl},
-});
+}));
 
 export default Screen;

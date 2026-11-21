@@ -1,0 +1,42 @@
+:root {
+  --bg: #070a16;
+  --card: #12172c;
+  --border: #232a4a;
+  --text: #f2f4ff;
+  --muted: #98a0c4;
+  --blue: #2f8bff;
+  --green: #3ddc84;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f3f5fc;
+    --card: #ffffff;
+    --border: #dde2f2;
+    --text: #12172c;
+    --muted: #5b6488;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { display: flex; justify-content: center; padding: 24px 16px 40px; }
+main { width: 100%; max-width: 420px; text-align: center; }
+.logo { width: 84px; height: 84px; border-radius: 22px; margin: 28px auto 18px; display: block; box-shadow: 0 10px 30px rgba(47, 139, 255, .35); }
+h1 { font-size: 26px; line-height: 1.2; margin: 0 0 8px; word-wrap: break-word; }
+.sub { color: var(--muted); font-size: 16px; line-height: 1.45; margin: 0 0 26px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 22px; padding: 18px; margin-bottom: 14px; text-align: left; }
+.btn { display: block; width: 100%; text-align: center; text-decoration: none; font-weight: 700; font-size: 17px; border-radius: 999px; padding: 15px 18px; border: 0; cursor: pointer; }
+.primary { background: var(--blue); color: #fff; margin-bottom: 12px; }
+.secondary { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
+.green { background: var(--green); color: #06210f; }
+.row { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 12px; }
+.row:last-child { margin-bottom: 0; }
+.n { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff; font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+.row p { margin: 2px 0 0; font-size: 15px; line-height: 1.4; }
+.small { color: var(--muted); font-size: 13px; line-height: 1.45; margin-top: 18px; }
+.lock { display: inline-block; margin-right: 4px; }
+.bad { color: #ff7b7b; }
+
+.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--muted); font-size: 15px; margin-top: 8px; }
+.brand img { width: 24px; height: 24px; border-radius: 7px; }
+.avatar { width: 104px; height: 104px; border-radius: 50%; margin: 22px auto 18px; display: grid; place-items: center; color: #fff; font-size: 40px; font-weight: 700; letter-spacing: .5px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); }
+.avatar svg { width: 54px; height: 54px; }

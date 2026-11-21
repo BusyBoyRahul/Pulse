@@ -23,8 +23,39 @@ function deriveKey(passphrase: string, salt: Uint8Array): Uint8Array {
   return h.slice(0, 32);
 }
 
+/**
+ * Secret chats never leave the phone they were made on: no keys, no invites, no
+ * messages go into a backup (restoring old keys would also break the chat).
+ */
+export function withoutSecrets(data: Record<string, string>): Record<string, string> {
+  const out = {...data};
+  delete out['chat.sessions'];
+  delete out['chat.secrets'];
+  const raw = out['chat.history'];
+  if (raw) {
+    try {
+      const h = JSON.parse(raw) as {byConversation?: Record<string, unknown>; outbox?: Record<string, {conversationId?: string}>};
+      for (const k of Object.keys(h.byConversation ?? {})) {
+        if (k.startsWith('sc:')) {
+          delete h.byConversation![k];
+        }
+      }
+      for (const [k, o] of Object.entries(h.outbox ?? {})) {
+        if (o?.conversationId?.startsWith('sc:')) {
+          delete h.outbox![k];
+        }
+      }
+      out['chat.history'] = JSON.stringify(h);
+    } catch {
+      /* unreadable history: leave as is */
+    }
+  }
+  return out;
+}
+
 /** Make the backup text. */
 export function sealBackup(passphrase: string, data: Record<string, string> = snapshotStorage()): string {
+  data = withoutSecrets(data);
   const salt = nacl.randomBytes(16);
   const nonce = nacl.randomBytes(24);
   const plain = naclUtil.decodeUTF8(JSON.stringify({v: 1, at: Date.now(), data}));

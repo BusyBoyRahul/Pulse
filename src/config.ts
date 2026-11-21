@@ -22,6 +22,11 @@ export const config = {
   // regenerate the pair for production.
   serverPublicKey: 'bIlyAH2kjGQQd/sFW5IcATCEkWvuz37jU5nGqqiIFHc=',
 
+  // Public key that checks phone-number certificates (Ed25519, base64). The matching
+  // secret signs them on the verification server (ATTEST_SIGN_SECRET). Dev key —
+  // regenerate the pair for production.
+  attestPublicKey: '+45emyIomJfTXWD2tjTXAcxmEURyYeKiBlGyMeHlZVo=',
+
   // Relay behavior
   defaultTtl: 6, // max hops a packet travels
   scanWindowMs: 5000,

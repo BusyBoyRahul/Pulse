@@ -19,13 +19,24 @@ type NativeMedia = {
   usage(): Promise<{count: number; bytes: number}>;
   clearAll(): Promise<boolean>;
   pickFile(mime: string | null, maxBytes: number): Promise<PickedFile>;
+  pickFiles(mime: string | null, maxBytes: number, limit: number, startAt: string | null): Promise<{files: PickedFile[]; skipped: number}>;
+  storageRoots(): Promise<StorageRoot[]>;
+  rotateJpeg(b64: string, degrees: number): Promise<string>;
+  fitJpeg(b64: string, maxChars: number): Promise<string>;
+  composePhoto(b64: string, spec: string): Promise<string>;
   saveAs(path: string, name: string, mime: string | null): Promise<boolean>;
   saveImageToGallery(b64: string, name: string): Promise<boolean>;
   openFile(path: string, mime: string | null): Promise<boolean>;
   mediaInfo(path: string): Promise<{durationMs?: number; thumb?: string}>;
+  recentMedia(limit: number): Promise<GalleryItem[]>;
+  galleryPhoto(uri: string, maxDim: number, quality: number): Promise<string>;
+  importUri(uri: string, maxBytes: number): Promise<PickedFile>;
   voiceStart(): Promise<boolean>;
   voiceStop(): Promise<{path: string; durationMs: number; size: number}>;
   voiceCancel(): Promise<boolean>;
+  voicePause(): Promise<boolean>;
+  voiceResume(): Promise<boolean>;
+  voiceLevel(): Promise<number>;
   playStart(path: string): Promise<boolean>;
   playStop(): Promise<boolean>;
   biometricAvailable(): Promise<boolean>;
@@ -43,6 +54,16 @@ export const CHUNK_BYTES = 9000;
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export type PickedFile = {path: string; name: string; size: number; mime: string};
+/** What the photo editor made, every number a fraction of the original picture. */
+export type PhotoEdits = {
+  crop?: {x: number; y: number; w: number; h: number};
+  strokes?: {c: string; w: number; p: number[]}[];
+  texts?: {t: string; c: string; x: number; y: number; s: number}[];
+};
+/** A place to browse for files: internal storage, an SD card, Downloads… `key` is where Android's file browser opens. */
+export type StorageRoot = {key: string; label: string; kind: 'volume' | 'folder'};
+/** One photo or video on the phone, as listed for the attach panel's grid. */
+export type GalleryItem = {id: string; uri: string; kind: 'image' | 'video'; durationMs: number};
 export type FileKind = 'file' | 'video' | 'audio' | 'voice';
 
 export type PickResult = {ok: true; file: PickedFile} | {ok: false; reason: 'cancelled' | 'too-large' | 'error'};
@@ -109,6 +130,104 @@ export const mediaFiles = {
     }
   },
 
+  /** Pick several files at once. `skipped` counts the ones that were too large or could not be read. */
+  async pickMany(mime: string | undefined, limit: number, startAt?: string): Promise<{ok: true; files: PickedFile[]; skipped: number} | {ok: false; reason: 'cancelled' | 'error'}> {
+    if (!Native) {
+      return {ok: false, reason: 'error'};
+    }
+    try {
+      markExternal();
+      const r = await Native.pickFiles(mime ?? null, MAX_FILE_BYTES, limit, startAt ?? null);
+      return {ok: true, files: r.files, skipped: r.skipped};
+    } catch (e) {
+      return {ok: false, reason: (e as {code?: string}).code === 'CANCELLED' ? 'cancelled' : 'error'};
+    }
+  },
+
+  /** Internal storage, any SD card or USB drive, Downloads and Documents: where Android's file browser can open. */
+  async roots(): Promise<StorageRoot[]> {
+    if (!Native) {
+      return [];
+    }
+    try {
+      return await Native.storageRoots();
+    } catch {
+      return [];
+    }
+  },
+
+  /** Bake the editor's drawing, text and crop into a photo (see MediaFilesModule.composePhoto for the spec). */
+  async composePhoto(b64: string, spec: PhotoEdits): Promise<string | null> {
+    if (!Native) {
+      return null;
+    }
+    try {
+      return await Native.composePhoto(b64, JSON.stringify(spec));
+    } catch {
+      return null;
+    }
+  },
+
+  /** The picture shrunk (size, then quality) until its text is at most maxChars long. null if it cannot be done. */
+  async fitPhoto(b64: string, maxChars: number): Promise<string | null> {
+    if (!Native) {
+      return null;
+    }
+    try {
+      return await Native.fitJpeg(b64, maxChars);
+    } catch {
+      return null;
+    }
+  },
+
+  /** A photo turned a quarter turn (90 = clockwise), as base64 JPEG; null if it could not be done. */
+  async rotatePhoto(b64: string, degrees = 90): Promise<string | null> {
+    if (!Native) {
+      return null;
+    }
+    try {
+      return await Native.rotateJpeg(b64, degrees);
+    } catch {
+      return null;
+    }
+  },
+
+  /** Newest photos and videos first. null = Pulse is not allowed to see them (or this phone cannot list them). */
+  async recent(limit: number): Promise<GalleryItem[] | null> {
+    if (!Native) {
+      return null;
+    }
+    try {
+      return await Native.recentMedia(limit);
+    } catch {
+      return null;
+    }
+  },
+
+  /** A gallery photo ready to send (base64 JPEG, upright, long side at most `maxDim`), or null if it cannot be read. */
+  async galleryPhoto(uri: string, maxDim = 1280, quality = 70): Promise<string | null> {
+    if (!Native) {
+      return null;
+    }
+    try {
+      return await Native.galleryPhoto(uri, maxDim, quality);
+    } catch {
+      return null;
+    }
+  },
+
+  /** Copy a gallery video into Pulse so it can be sent in pieces. null = too large or unreadable. */
+  async importUri(uri: string): Promise<PickedFile | null> {
+    if (!Native) {
+      return null;
+    }
+    try {
+      return await Native.importUri(uri, MAX_FILE_BYTES);
+    } catch {
+      return null;
+    }
+  },
+
   allocate: (path: string, size: number) => (Native ? Native.allocate(path, size).catch(() => false) : Promise.resolve(false)),
   readChunk: (path: string, offset: number, length: number) => (Native ? Native.readChunk(path, offset, length) : Promise.resolve('')),
   writeChunk: (path: string, offset: number, b64: string) => (Native ? Native.writeChunk(path, offset, b64).catch(() => false) : Promise.resolve(false)),
@@ -167,6 +286,10 @@ export const mediaFiles = {
     start: () => (Native ? Native.voiceStart() : Promise.reject(new Error('unavailable'))),
     stop: () => (Native ? Native.voiceStop() : Promise.reject(new Error('unavailable'))),
     cancel: () => (Native ? Native.voiceCancel().catch(() => false) : Promise.resolve(false)),
+    pause: () => (Native ? Native.voicePause().catch(() => false) : Promise.resolve(false)),
+    resume: () => (Native ? Native.voiceResume().catch(() => false) : Promise.resolve(false)),
+    /** Current loudness, 0..32767. */
+    level: () => (Native ? Native.voiceLevel().catch(() => 0) : Promise.resolve(0)),
   },
 
   play: {

@@ -9,6 +9,7 @@ import {newPacketId} from '@/mesh/relayProtocol';
 import {getIdentity} from '@/services/identity';
 import {boxTo, openBox} from '@/services/crypto';
 import {callAudio} from '@/services/callAudio';
+import {displayName} from '@/services/names';
 import {requestMicrophone} from '@/services/permissions';
 import {navigationRef} from '@/navigation/ref';
 import {usePairingStore} from './pairingStore';
@@ -246,7 +247,7 @@ export const useCallStore = create<CallState>((set, get) => {
         clearTimeout(lingerTimer);
         lingerTimer = null;
       }
-      const name = usePairingStore.getState().paired.find(p => p.publicKey === from)?.name || sig.name || 'Someone';
+      const name = displayName(from, sig.name);
       set({
         ...initial,
         phase: 'incoming',

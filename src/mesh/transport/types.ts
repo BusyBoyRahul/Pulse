@@ -35,6 +35,7 @@ export type TransportState =
   | 'starting'
   | 'active'
   | 'bluetooth-off'
+  | 'wifi-off'
   | 'unauthorized'
   | 'unsupported'
   | 'error';

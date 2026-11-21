@@ -17,7 +17,7 @@ Nearby phones relay for each other, so a message can hop from phone to phone unt
   <img src="https://img.shields.io/badge/%E2%AC%87%20Download%20Pulse.apk-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download Pulse.apk" height="48" />
 </a>
 
-<sub>Direct download · 69 MB · Android 6.0+ · [all releases](../../releases)</sub>
+<sub>Direct download · 57 MB · Android 6.0+ · [all releases](../../releases)</sub>
 
 </div>
 
@@ -64,7 +64,20 @@ Nearby phones relay for each other, so a message can hop from phone to phone unt
 ### 🔔 Real Android notifications
 - Proper notification channels, heads-up and lock-screen alerts
 - Reply and Mark-read from the notification, plus incoming-call actions
-- A foreground service keeps relaying while the screen is off
+- A quiet background service (no sound, no status-bar icon) keeps Pulse connected so messages and calls arrive with the app closed. It is on by default
+
+### 🌐 Over the internet too
+- Messages also go through a short relay note while a direct encrypted link is being set up, so delivery takes about a second instead of waiting for the link
+- Voice and video calls use WebRTC with free public relay fallbacks (add your own server in Settings → Internet)
+
+### 🖼️ Media, status and wallpaper
+- Pick several photos, videos or files, then a full-screen preview with a caption, spoiler and view-once options
+- Status updates (text or photo): edit them, reply or react from the viewer, pull up to see who watched
+- Photo wallpapers with opacity and blur and a live preview
+
+### 👥 Accounts
+- Several accounts on one phone; a verified number can belong to only one of them, and adding an account can be cancelled at any step
+- If your number was confirmed and the SIM card changes, the confirmed badge is removed until you choose your number again
 
 ### 🔒 Privacy & security
 - **End-to-end encryption** (NaCl: X25519 + XSalsa20-Poly1305) for messages, groups and call audio

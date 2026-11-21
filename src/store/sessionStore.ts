@@ -1,5 +1,6 @@
 import {create} from 'zustand';
-import {storage, StorageKeys} from '@/services/storage';
+import {storage, StorageKeys, updateActiveAccount, numberUsedByOtherAccount} from '@/services/storage';
+import {rememberSim} from '@/services/simWatch';
 
 type SessionState = {
   hydrated: boolean;
@@ -8,6 +9,10 @@ type SessionState = {
   isReady: boolean;
   /** Optional cloud account (OTP) for backup/recovery; not required to use Pulse. */
   hasCloudAccount: boolean;
+  /** The phone number passed an SMS check. */
+  phoneVerified: boolean;
+  /** Signed proof of that (checkable offline by anyone). */
+  attestation: string | null;
   userId: number | null;
   profileName: string | null;
   phone: string | null;
@@ -24,6 +29,9 @@ type SessionState = {
   /** Attach an optional cloud account (from Settings, when online). */
   linkCloudAccount: (token: string, userId: number, phone: string) => void;
   unlinkCloudAccount: () => void;
+  /** The phone texted its own number and the text arrived: remember the number as confirmed (no server). */
+  /** Returns false (and saves nothing) if another account on this phone already uses the number. */
+  markPhoneVerified: (v: {phone: string}) => boolean;
   resetProfile: () => void;
 };
 
@@ -35,11 +43,13 @@ type SessionState = {
  * (phone-OTP) is an optional extra for backup + letting the server address
  * push confirmations — never required to open or use the app.
  */
-export const useSessionStore = create<SessionState>(set => ({
+export const useSessionStore = create<SessionState>((set, get) => ({
   hydrated: false,
   onboarded: false,
   isReady: false,
   hasCloudAccount: false,
+  phoneVerified: false,
+  attestation: null,
   userId: null,
   profileName: null,
   phone: null,
@@ -57,6 +67,8 @@ export const useSessionStore = create<SessionState>(set => ({
       // Ready as soon as onboarding is done — a local profile is enough.
       isReady: onboarded,
       hasCloudAccount: !!token,
+      phoneVerified: (storage.getBoolean(StorageKeys.phoneVerified) ?? false) && !!phone,
+      attestation: storage.getString(StorageKeys.attestation) ?? null,
       userId: storage.getNumber(StorageKeys.userId) ?? null,
       profileName: storage.getString(StorageKeys.profileName) ?? null,
       phone,
@@ -76,6 +88,7 @@ export const useSessionStore = create<SessionState>(set => ({
     if (avatar?.thumb) {
       storage.set(StorageKeys.avatarThumb, avatar.thumb);
     }
+    updateActiveAccount({name, thumb: avatar?.thumb ?? undefined});
     set({
       onboarded: true,
       isReady: true,
@@ -89,8 +102,16 @@ export const useSessionStore = create<SessionState>(set => ({
   setProfile: patch => {
     if (patch.name !== undefined) {
       storage.set(StorageKeys.profileName, patch.name);
+      updateActiveAccount({name: patch.name});
     }
     if (patch.phone !== undefined) {
+      // A different number is not the one that was verified.
+      if (patch.phone !== get().phone && get().phoneVerified) {
+        storage.delete(StorageKeys.phoneVerified);
+        storage.delete(StorageKeys.attestation);
+        updateActiveAccount({phoneVerified: false});
+        set({phoneVerified: false, attestation: null});
+      }
       storage.set(StorageKeys.phone, patch.phone);
     }
     if (patch.bio !== undefined) {
@@ -106,8 +127,10 @@ export const useSessionStore = create<SessionState>(set => ({
     if (patch.avatarThumb !== undefined) {
       if (patch.avatarThumb) {
         storage.set(StorageKeys.avatarThumb, patch.avatarThumb);
+        updateActiveAccount({thumb: patch.avatarThumb});
       } else {
         storage.delete(StorageKeys.avatarThumb);
+        updateActiveAccount({thumb: undefined});
       }
     }
     set(state => ({
@@ -124,6 +147,19 @@ export const useSessionStore = create<SessionState>(set => ({
     storage.set(StorageKeys.userId, userId);
     storage.set(StorageKeys.phone, phone);
     set({hasCloudAccount: true, userId, phone});
+  },
+
+  markPhoneVerified: ({phone}) => {
+    if (numberUsedByOtherAccount(phone)) {
+      return false;
+    }
+    storage.set(StorageKeys.phone, phone);
+    storage.set(StorageKeys.phoneVerified, true);
+    storage.delete(StorageKeys.attestation);
+    updateActiveAccount({phoneVerified: true, phone: phone.replace(/\D/g, '')});
+    set({phone, phoneVerified: true, attestation: null});
+    void rememberSim(); // so a later SIM change can be noticed
+    return true;
   },
 
   unlinkCloudAccount: () => {

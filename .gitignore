@@ -38,3 +38,6 @@ coverage/
 
 # Logs
 *.log
+
+# The app download is a GitHub Release, not a file in the repo
+*.apk

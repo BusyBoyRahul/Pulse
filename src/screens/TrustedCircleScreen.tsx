@@ -1,9 +1,11 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useEffect, useState} from 'react';
-import {Alert, FlatList, Pressable, StyleSheet, View} from 'react-native';
+import {FlatList, StyleSheet, View} from 'react-native';
 import {Screen, Button, Txt, Card, TextField, MaskedNumber} from '@/components';
 import {colors, radius, spacing} from '@/theme/theme';
 import {useContactsStore} from '@/store/contactsStore';
 import type {TrustedContact} from '@/types';
+import {alertDialog} from '@/components/Dialog';
 
 const MAX = 5;
 
@@ -41,14 +43,14 @@ export default function TrustedCircleScreen() {
   };
 
   const confirmRemove = (c: TrustedContact) => {
-    Alert.alert('Remove contact', `Remove ${c.name} from your trusted circle?`, [
+    alertDialog('Remove contact', `Remove ${c.name} from your trusted circle?`, [
       {text: 'Cancel', style: 'cancel'},
       {text: 'Remove', style: 'destructive', onPress: () => remove(c)},
     ]);
   };
 
   const renderItem = ({item}: {item: TrustedContact}) => (
-    <Card style={styles.row}>
+    <Card flat style={styles.row}>
       <View style={styles.avatar}>
         <Txt variant="subtitle" tone="accent">
           {item.name.charAt(0).toUpperCase()}
@@ -58,11 +60,7 @@ export default function TrustedCircleScreen() {
         <Txt variant="bodyStrong">{item.name}</Txt>
         <MaskedNumber value={item.phoneNumber} />
       </View>
-      <Pressable hitSlop={12} onPress={() => confirmRemove(item)}>
-        <Txt variant="caption" tone="danger">
-          Remove
-        </Txt>
-      </Pressable>
+      <Button label="Remove" variant="secondary" size="sm" fullWidth={false} onPress={() => confirmRemove(item)} />
     </Card>
   );
 
@@ -85,7 +83,7 @@ export default function TrustedCircleScreen() {
           </View>
         }
         ListEmptyComponent={
-          <Card style={styles.empty} raised>
+          <Card flat style={styles.empty} raised>
             <Txt variant="subtitle">No contacts yet</Txt>
             <Txt variant="caption" tone="muted" style={styles.emptyBody}>
               Add at least one person so an SOS has somewhere to go.
@@ -137,7 +135,7 @@ export default function TrustedCircleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   list: {padding: spacing.xl, paddingBottom: spacing.xxxl},
   header: {marginBottom: spacing.lg},
   count: {marginTop: spacing.md},
@@ -157,4 +155,4 @@ const styles = StyleSheet.create({
   footer: {marginTop: spacing.md},
   err: {marginBottom: spacing.sm},
   syncErr: {marginTop: spacing.md, textAlign: 'center'},
-});
+}));

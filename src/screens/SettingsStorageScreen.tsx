@@ -1,5 +1,6 @@
+import {themedStyles} from '@/theme/themed';
 import React, {useCallback, useState} from 'react';
-import {Alert, StyleSheet, ToastAndroid, View} from 'react-native';
+import {StyleSheet, ToastAndroid, View} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 
 import {Screen, Txt, Button, Sheet, TextField, SettingRow, SettingGroup, SettingLabel} from '@/components';
@@ -7,6 +8,7 @@ import {spacing} from '@/theme/theme';
 import {useChatStore, mediaUsage} from '@/store/chatStore';
 import {mediaFiles, formatBytes} from '@/services/mediaFiles';
 import {exportBackup, openBackup, readBackupFile, applyBackup, OpenResult} from '@/services/backup';
+import {alertDialog} from '@/components/Dialog';
 
 type BackupFlow = null | {kind: 'create'} | {kind: 'restore'; text: string};
 
@@ -33,13 +35,13 @@ export default function SettingsStorageScreen() {
   const refreshFiles = () => void mediaFiles.usage().then(setFiles);
 
   const clearPhotos = () =>
-    Alert.alert('Delete saved photos?', 'Photos disappear from your chats on this phone. The text stays. This can’t be undone.', [
+    alertDialog('Delete saved photos?', 'Photos disappear from your chats on this phone. The text stays. This can’t be undone.', [
       {text: 'Cancel', style: 'cancel'},
       {text: 'Delete photos', style: 'destructive', onPress: () => void useChatStore.getState().clearAllMedia().then(() => bump(n => n + 1))},
     ]);
 
   const clearFiles = () =>
-    Alert.alert('Delete files and voice notes?', 'They disappear from your chats on this phone. This can’t be undone.', [
+    alertDialog('Delete files and voice notes?', 'They disappear from your chats on this phone. This can’t be undone.', [
       {text: 'Cancel', style: 'cancel'},
       {
         text: 'Delete files',
@@ -53,7 +55,7 @@ export default function SettingsStorageScreen() {
     ]);
 
   const clearChats = () =>
-    Alert.alert('Delete every chat?', 'All messages, photos, files and voice notes on this phone are erased. People you’re connected to stay connected. This can’t be undone.', [
+    alertDialog('Delete every chat?', 'All messages, photos, files and voice notes on this phone are erased. People you’re connected to stay connected. This can’t be undone.', [
       {text: 'Cancel', style: 'cancel'},
       {
         text: 'Delete all chats',
@@ -90,12 +92,12 @@ export default function SettingsStorageScreen() {
       const text = await readBackupFile(r.file.path, r.file.size);
       void mediaFiles.remove(r.file.path);
       if (!text.startsWith('PULSEBAK1:')) {
-        Alert.alert('Not a Pulse backup', 'That file isn’t a Pulse backup (.pulsebak).');
+        alertDialog('Not a Pulse backup', 'That file isn’t a Pulse backup (.pulsebak).');
         return;
       }
       setFlow({kind: 'restore', text});
     } catch {
-      Alert.alert('Couldn’t read that file');
+      alertDialog('Couldn’t read that file');
     }
   };
 
@@ -132,7 +134,7 @@ export default function SettingsStorageScreen() {
     const when = new Date(r.at).toLocaleString();
     setFlow(null);
     setBusy(false);
-    Alert.alert('Restore this backup?', `Made ${when}. It REPLACES your chats, connections, profile and settings on this phone, then Pulse restarts.`, [
+    alertDialog('Restore this backup?', `Made ${when}. It REPLACES your chats, connections, profile and settings on this phone, then Pulse restarts.`, [
       {text: 'Cancel', style: 'cancel', onPress: closeFlow},
       {text: 'Restore', style: 'destructive', onPress: () => void applyBackup(r.data)},
     ]);
@@ -161,7 +163,7 @@ export default function SettingsStorageScreen() {
         <SettingRow icon="database" title="Restore from a backup" subtitle="Pick a .pulsebak file" onPress={() => void startRestore()} />
       </SettingGroup>
       <Txt variant="caption" tone="muted" style={styles.note}>
-        A backup holds your identity key, connections, groups, chat text, labels and settings. Photos, files and voice notes are not included. Keep the passphrase safe — nobody can recover it for you.
+        Photos and files aren’t included. Keep your passphrase safe — it can’t be recovered.
       </Txt>
 
       <Sheet visible={!!flow} onClose={closeFlow} title={flow?.kind === 'restore' ? 'Restore backup' : 'Back up'}>
@@ -190,7 +192,7 @@ export default function SettingsStorageScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   note: {marginTop: spacing.lg, paddingHorizontal: spacing.xs},
   sheetNote: {marginBottom: spacing.md},
-});
+}));

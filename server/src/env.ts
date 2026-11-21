@@ -31,6 +31,10 @@ export const env = {
   // Its matching public key lives in the app's config.serverPublicKey.
   sealSecret: process.env.SERVER_SEAL_SECRET ?? '',
 
+  // Ed25519 secret key (base64, 64 bytes) that signs phone-number certificates.
+  // The matching public key is in the app (config.attestPublicKey).
+  attestSecret: process.env.ATTEST_SIGN_SECRET ?? '',
+
   db: {
     host: process.env.DB_HOST ?? '127.0.0.1',
     port: Number(process.env.DB_PORT ?? 3306),
