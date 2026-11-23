@@ -13,7 +13,7 @@
 - A strip of shared photos in the group info, and a Media screen with tabs for photos, files and links.
 
 **Pinned messages**
-- Pin up to 3 messages in a group or a one-to-one chat. A new pin never removes the older ones.
+- Pin as many messages as you like in a group or a one-to-one chat. A new pin never removes the older ones. The bar (like Telegram's) shows one at a time with a segmented stripe, a small picture for photos and the time; tap it to jump to that exact message, which flashes, and it moves on to the next older pin. A list button shows them all. Pinned messages carry a small pin mark.
 
 **Calls**
 - A **Minimise** button, and a green bar at the top that takes you back to the call.

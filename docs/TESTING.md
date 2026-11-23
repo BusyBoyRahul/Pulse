@@ -5,7 +5,7 @@ real phones, and battery checks.
 
 ## 1. Automated tests — `npm test`
 
-**256 tests pass** (2 are skipped) in 33 suites. They run with no radio, no internet and no server. The mesh tests use a
+**260 tests pass** (2 are skipped) in 33 suites. They run with no radio, no internet and no server. The mesh tests use a
 **virtual-phone harness** (`src/testing/meshHarness.ts`): each virtual phone has its own keys, storage and stores, and they
 talk over a fake mesh, fake relays and fake WebRTC links.
 
@@ -13,8 +13,8 @@ talk over a fake mesh, fake relays and fake WebRTC links.
 |---|---|---|
 | **Mesh and relaying** | `relayProtocol`, `meshEngine`, `meshCarry` (in `src/mesh/__tests__`) | Unique packet ids; multi-hop A→B→C→D; hop limits; no loops; a phone **holds a message and hands it over later**; presence and call audio are never carried |
 | **Chat end to end** | `relayEndToEnd`, `controls`, `formatting`, `composerFormat` | Chat A→C is delivered **and confirmed back**; photos reassemble across a relay; a call rings through a middle phone; notifications, mute, block, edit, delete for everyone, read receipts, rich text |
-| **Groups** | `groupAdmin` (15), `groupExtras`, `groupInternet`, `mentions`, `sharedMedia` | Roles and rules, add/remove with key change, join by link and approval, messages reach every member over the internet only, an offline member catches up, per-person delivered/read ticks, up to 3 pins, typing, @mentions that bypass mute, shared-media strip |
-| **Pinned messages (1:1)** | `directPins` | A new pin keeps the old ones, 3 at most, either person can unpin, a pin goes when its message is deleted or disappearing messages are switched on |
+| **Groups** | `groupAdmin` (15), `groupExtras`, `groupInternet`, `mentions`, `sharedMedia` | Roles and rules, add/remove with key change, join by link and approval, messages reach every member over the internet only, an offline member catches up, per-person delivered/read ticks, any number of pins, catching up after missed changes, typing, @mentions that bypass mute, shared-media strip |
+| **Pinned messages (1:1)** | `directPins` | A new pin keeps the old ones, **no limit** (40 tested), a phone that missed some pins asks for the whole list and catches up, either person can unpin, a pin goes when its message is deleted or disappearing messages are switched on |
 | **Internet** | `internet`, `internetCall`, `appRtc`, `liveRelays`, `discovery` | Relay mailboxes, offline catch-up, direct links, internet calls, @username claims (**oldest wins**), repeat searches |
 | **Privacy and security** | `crypto`, `ratchet`, `secretChat`, `privacy`, `profileAudience`, `lockAndBackup`, `attestation`, `smsVerify` | Sealed boxes, forward secrecy, secret chats, number masking and optional numbers, who sees your photo and about, app lock vs chat lock, encrypted backup, phone-number certificates |
 | **People and names** | `names`, `inviteLink`, `accounts`, `callLog` | A name is never an ID; web and `pulse://` links in both forms, links from other sites rejected; several accounts; call history |

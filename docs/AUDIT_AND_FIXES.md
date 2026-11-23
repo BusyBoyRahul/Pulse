@@ -207,7 +207,7 @@ sent as one addressed, sealed copy per member (mesh, internet or relay mailbox),
 members who have not confirmed. Added: admins, rules, picture, description, join by link with approval, key change on removal, pins, mentions,
 typing, history lines, and a Message info page with who read / got / has not got it.
 
-**Pinned messages.** A new pin used to replace the old one. A chat now keeps up to 3, in groups and one-to-one chats; one-to-one pins are shared with
+**Pinned messages.** A new pin used to replace the old one. A chat now keeps any number, in groups and one-to-one chats (pins travel as single changes, so there is no size limit; a phone that missed one asks for the whole list in small parts); one-to-one pins are shared with
 the other person and are cleared when the message is deleted or disappearing messages are switched on.
 
 **Calls.** The "down arrow" on the call screen minimised the call with no way back. It is now a labelled **Minimise** button, and a green bar on every

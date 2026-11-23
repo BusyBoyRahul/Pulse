@@ -22,7 +22,7 @@ When you do have internet, Pulse uses that too.
 
 ![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?logo=android&logoColor=white)
 ![Version](https://img.shields.io/badge/version-1.1-2F8BFF)
-![Tests](https://img.shields.io/badge/tests-256%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-260%20passing-brightgreen)
 ![Works offline](https://img.shields.io/badge/works-offline-1e40af)
 ![Encrypted](https://img.shields.io/badge/chats-end--to--end%20encrypted-111827)
 
@@ -66,7 +66,7 @@ gets a text ready for your trusted people.
 <table>
 <tr>
 <td align="center"><img src="docs/screens/chats.jpg" width="170" alt="Chats"><br><sub><b>Chats</b><br>pinned, groups, secret</sub></td>
-<td align="center"><img src="docs/screens/pinned.jpg" width="170" alt="Pinned messages"><br><sub><b>Pinned messages</b><br>up to 3 per chat</sub></td>
+<td align="center"><img src="docs/screens/pinned.jpg" width="170" alt="Pinned messages"><br><sub><b>Pinned messages</b><br>no limit, tap to jump</sub></td>
 <td align="center"><img src="docs/screens/group.jpg" width="170" alt="Group info"><br><sub><b>Groups</b><br>picture, admins, rules</sub></td>
 </tr>
 <tr>
@@ -125,7 +125,7 @@ If the person is not reachable yet, a phone in between **holds the message** and
 | **Message info** | A page for each message: the steps it went through and, in groups, who read it |
 | **Rich messages** | Bold, italic, strike, mono, spoilers, emoji, replies, edit (15 min), forward, star, copy, reactions |
 | **Media** | Several photos at once, videos and any file up to 25 MB, voice notes, polls, shared contacts |
-| **Pinned messages** | Pin up to **3** messages to the top of a group or one-to-one chat. A new pin never removes the others (not in secret chats or chats with disappearing messages) |
+| **Pinned messages** | Pin **as many messages as you like** to the top of a group or one-to-one chat. A new pin never removes the others. The bar shows one at a time (tap it to jump to that message, which flashes), and a list button shows them all (not in secret chats or chats with disappearing messages) |
 | **Delete** | For you, or for everyone |
 | **Disappearing messages** | 24 hours, 7 days or 90 days, plus view-once photos |
 | **Secret chats** | Extra-private chats with their own keys and a self-destruct timer |
@@ -264,7 +264,7 @@ Pulse is installed from this page, not from the Play Store, and it is signed wit
 
 | | |
 |---|---|
-| ✅ **Checked** | **256 automated tests pass**, including three virtual phones relaying A → B → C, groups over the internet, files, backup and locks. The release app was tried on an Android emulator. |
+| ✅ **Checked** | **260 automated tests pass**, including three virtual phones relaying A → B → C, groups over the internet, files, backup and locks. The release app was tried on an Android emulator. |
 | ⚠️ **Not yet proven** | Real-radio range, call audio quality, relaying with the screen off, and whether Nearby turns Wi-Fi on for every phone need a **field test with real phones**. The checklist is in [docs/AUDIT_AND_FIXES.md](docs/AUDIT_AND_FIXES.md). |
 | 🚧 **Limits** | Android only. Large files are slow over the mesh. Pairing is trust-on-first-use. Backups don't include photos, files or voice notes. |
 | 🗺️ **Not built** | iPhone version · group voice and video calls |
@@ -281,7 +281,7 @@ Pulse is installed from this page, not from the Play Store, and it is signed wit
 ```powershell
 npm install
 npm run typecheck
-npm test                 # 256 tests
+npm test                 # 260 tests
 npm run android          # run on a connected phone or emulator
 ```
 

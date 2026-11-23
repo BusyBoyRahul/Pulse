@@ -29,7 +29,7 @@ export type ConvPrefs = {
   label?: string;
   /** Messages in this chat vanish this many ms after they are sent. Undefined = keep forever. */
   disappear?: number;
-  /** A one-to-one chat's pinned messages (the same on both phones, oldest first, up to 3): each one's id, who wrote it, a short copy of its text, and who pinned it. */
+  /** A one-to-one chat's pinned messages (the same on both phones, oldest first, no limit): each one's id, who wrote it, a short copy of its text, and who pinned it. */
   pinMsgs?: {mid: string; from: string; t: string; by: string}[];
   /** Needs the PIN (or fingerprint) to open; its preview and notifications are hidden. */
   locked?: boolean;

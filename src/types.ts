@@ -99,7 +99,7 @@ export type Group = {
   pic?: string;
   /** The group's rules. Default (nothing set) = everyone may. */
   perms?: GroupPerms;
-  /** Messages pinned to the top of the chat, oldest first (up to 3; a short copy of each, so it stays even if the original scrolls away). */
+  /** Messages pinned to the top of the chat, oldest first (no limit; a short copy of each, so it stays even if the original scrolls away). */
   pins?: GroupPin[];
   /** The one pin older versions kept. Read as the only item of `pins`; never written any more. */
   pinned?: GroupPin;

@@ -16,8 +16,6 @@ export const MAX_NAME = 40;
 export const MAX_DESC = 500;
 /** Most people in one group. Every message is sent to each of them one by one, so there has to be a limit. */
 export const MAX_MEMBERS = 50;
-/** Most messages pinned at once in one chat. */
-export const MAX_PINS = 3;
 const MAX_NOTES = 200;
 const MAX_REQUESTS = 50;
 const MAX_PIC = 24000;
@@ -57,13 +55,18 @@ type AcceptWire = {t: 'accept'; pk: string; name: string};
 // From an admin: who is in the group, who is admin, the rules (and a new secret key when someone was removed).
 type RosterWire = {t: 'roster'; id: string; name: string; members: string[]; admins?: string[]; perms?: GroupPerms; key?: string};
 // From an admin (or any member when the rules allow): the group's name, picture or description. '' removes it.
-// pins = the whole list of pinned messages as it is now (sent whole, so it is always right). pin = what older versions sent: one pin, or null for none.
-type InfoWire = {t: 'info'; id: string; name?: string; desc?: string; pic?: string; pin?: GroupPin | null; pins?: GroupPin[]};
+// Pinned messages travel as CHANGES, so there is no limit on how many: pinAdd = one more pin, pinDel = the id of one taken away, pn = how many
+// pins the sender has after the change (a phone whose count differs asks for the whole list, see PinReqWire). pin / pins = older versions.
+type InfoWire = {t: 'info'; id: string; name?: string; desc?: string; pic?: string; pin?: GroupPin | null; pins?: GroupPin[]; pinAdd?: GroupPin; pinDel?: string; pn?: number};
+// "My pin list does not match yours: please send me the whole list."
+type PinReqWire = {t: 'pinq'; id: string};
+// The whole pin list, in parts of PIN_CHUNK so each message stays small (part i of `of`).
+type PinSyncWire = {t: 'pinsync'; id: string; pins: GroupPin[]; i: number; of: number};
 // From a member who is leaving.
 type GoneWire = {t: 'gone'; id: string};
 // From someone who opened the group's link: please let me in.
 type JoinReqWire = {t: 'joinreq'; id: string; name: string};
-type DirectedWire = InviteWire | RosterWire | InfoWire | GoneWire | JoinReqWire;
+type DirectedWire = InviteWire | RosterWire | InfoWire | GoneWire | JoinReqWire | PinReqWire | PinSyncWire;
 
 function groupId(): string {
   return `g_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
@@ -101,7 +104,7 @@ function cleanPin(p: unknown, by: string): GroupPin | null {
 /** The messages pinned in a group (oldest first). Reads the single pin older versions kept, too. */
 export const pinsOf = (g: Group): GroupPin[] => g.pins ?? (g.pinned ? [g.pinned] : []);
 
-/** A list of pinned messages as received: at most MAX_PINS, each one clean, none twice. */
+/** A list of pinned messages as received: each one clean, none twice. */
 function cleanPins(list: unknown, by: string): GroupPin[] {
   if (!Array.isArray(list)) {
     return [];
@@ -109,12 +112,17 @@ function cleanPins(list: unknown, by: string): GroupPin[] {
   const out: GroupPin[] = [];
   for (const p of list) {
     const pin = cleanPin(p, by);
-    if (pin && !out.some(o => o.mid === pin.mid) && out.length < MAX_PINS) {
+    if (pin && !out.some(o => o.mid === pin.mid)) {
       out.push(pin);
     }
   }
   return out;
 }
+
+const PIN_CHUNK = 15;
+/** Pin lists being received in parts: "group:sender" -> the parts so far. */
+const pinParts = new Map<string, {of: number; parts: Map<number, GroupPin[]>}>();
+const pinAsked = new Map<string, number>();
 
 /** Is this person an admin of this group? */
 export const isAdminOf = (g: Group, key: string): boolean => g.createdBy === key || !!g.admins?.includes(key);
@@ -147,8 +155,8 @@ type GroupsState = {
   setInfo: (id: string, patch: {name?: string; desc?: string; pic?: string}) => boolean;
   /** Same as setInfo({name}). */
   rename: (id: string, name: string) => boolean;
-  /** Pin one more message to the top of the group chat (up to MAX_PINS; the others stay). Same permission as editing the group's info. 'full' = already MAX_PINS pinned. */
-  addPin: (id: string, pin: Omit<GroupPin, 'by'>) => 'ok' | 'full' | 'no';
+  /** Pin one more message to the top of the group chat (no limit; the others stay). Same permission as editing the group's info. */
+  addPin: (id: string, pin: Omit<GroupPin, 'by'>) => 'ok' | 'no';
   /** Take one pinned message away (the others stay). */
   removePin: (id: string, mid: string) => boolean;
   /** Admin only: invite more of my connections. False if nobody new, or the group is full. */
@@ -200,6 +208,18 @@ function sendTo(recipient: string, wire: DirectedWire): void {
   void getMeshEngine().send({type: 'GROUP', recipient, ttl: 5, payload: cipher, nonce});
 }
 const others = (g: Group): string[] => g.members.filter(k => k !== getIdentity().publicKey);
+
+/** Send one member the whole pin list, in small parts. `even` = send even when there is nothing pinned (so they clear theirs). */
+function sendPins(g: Group, to: string, even = false): void {
+  const pins = pinsOf(g);
+  if (!pins.length && !even) {
+    return;
+  }
+  const of = Math.max(1, Math.ceil(pins.length / PIN_CHUNK));
+  for (let i = 0; i < of; i++) {
+    sendTo(to, {t: 'pinsync', id: g.id, pins: pins.slice(i * PIN_CHUNK, (i + 1) * PIN_CHUNK), i, of});
+  }
+}
 
 export const useGroupsStore = create<GroupsState>((set, get) => {
   const save = (groups: Group[]) => {
@@ -361,7 +381,29 @@ export const useGroupsStore = create<GroupsState>((set, get) => {
             if (wire.pic !== undefined && okPic(wire.pic) && wire.pic !== (group.pic ?? '')) {
               next = withNote({...next, pic: wire.pic || undefined}, wire.pic ? `${who} changed the group picture` : `${who} removed the group picture`);
             }
-            // The pinned messages: the whole list as the sender has it now (or, from an older version, one pin / none).
+            // Pinned messages as CHANGES (pinAdd / pinDel). A phone that sees a different count than the sender asks for the whole list.
+            let askPins = false;
+            if (wire.pinAdd !== undefined || typeof wire.pinDel === 'string') {
+              const before = pinsOf(group);
+              let list = before;
+              const add = wire.pinAdd !== undefined ? cleanPin(wire.pinAdd, packet.origin) : null;
+              if (add && !list.some(p => p.mid === add.mid)) {
+                list = [...list, add];
+                next = withNote({...next, pins: list, pinned: undefined}, `${who} pinned a message`);
+              }
+              if (typeof wire.pinDel === 'string' && list.some(p => p.mid === wire.pinDel)) {
+                list = list.filter(p => p.mid !== wire.pinDel);
+                next = withNote({...next, pins: list.length ? list : undefined, pinned: undefined}, `${who} unpinned a message`);
+              }
+              if (typeof wire.pn === 'number' && list.length !== wire.pn) {
+                const key = `${wire.id}:${packet.origin}`;
+                if (Date.now() - (pinAsked.get(key) ?? 0) > 20000) {
+                  pinAsked.set(key, Date.now());
+                  askPins = true; // asked below, AFTER this change is saved (the answer may arrive at once)
+                }
+              }
+            }
+            // Older versions sent the whole list (or one pin / none).
             const newPins = Array.isArray(wire.pins) ? cleanPins(wire.pins, packet.origin) : wire.pin === null ? [] : wire.pin ? [cleanPin(wire.pin, packet.origin)].filter((p): p is GroupPin => !!p) : undefined;
             if (newPins !== undefined) {
               const before = pinsOf(group);
@@ -379,6 +421,46 @@ export const useGroupsStore = create<GroupsState>((set, get) => {
             }
             if (next !== group) {
               replace(next);
+            }
+            if (askPins) {
+              sendTo(packet.origin, {t: 'pinq', id: wire.id});
+            }
+            return;
+          }
+
+          if (wire.t === 'pinq') {
+            // A member asks for the whole pin list: send it (even an empty one, so they clear theirs).
+            const group = get().groups.find(g => g.id === wire.id);
+            if (group && group.members.includes(packet.origin)) {
+              sendPins(group, packet.origin, true);
+            }
+            return;
+          }
+
+          if (wire.t === 'pinsync') {
+            // The whole pin list, in parts, from someone who may pin. When every part is here it replaces mine.
+            const group = get().groups.find(g => g.id === wire.id);
+            if (!group || !canEditInfoOf(group, packet.origin) || !Array.isArray(wire.pins) || !Number.isInteger(wire.i) || !Number.isInteger(wire.of) || wire.of < 1 || wire.of > 400 || wire.i < 0 || wire.i >= wire.of) {
+              return;
+            }
+            const key = `${wire.id}:${packet.origin}`;
+            const got = pinParts.get(key) && pinParts.get(key)!.of === wire.of ? pinParts.get(key)! : {of: wire.of, parts: new Map<number, GroupPin[]>()};
+            got.parts.set(wire.i, cleanPins(wire.pins, packet.origin));
+            pinParts.set(key, got);
+            if (got.parts.size === got.of) {
+              pinParts.delete(key);
+              const all: GroupPin[] = [];
+              for (let i = 0; i < got.of; i++) {
+                for (const p of got.parts.get(i) ?? []) {
+                  if (!all.some(a => a.mid === p.mid)) {
+                    all.push(p);
+                  }
+                }
+              }
+              const mine = pinsOf(group);
+              if (all.length !== mine.length || all.some((p, n) => p.mid !== mine[n]?.mid)) {
+                replace({...group, pins: all.length ? all : undefined, pinned: undefined});
+              }
             }
             return;
           }
@@ -435,6 +517,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => {
           const known = nameOf(acc.pk);
           const who = known === 'Someone' && typeof acc.name === 'string' && acc.name.trim() ? acc.name.trim().slice(0, 40) : known;
           replace(withNote({...group, joined: [...group.joined, acc.pk]}, `${who} joined`));
+          if (group.createdBy === getIdentity().publicKey) {
+            sendPins(group, acc.pk); // a new member sees what is already pinned
+          }
         }
       });
       set({subscribed: true});
@@ -560,12 +645,9 @@ export const useGroupsStore = create<GroupsState>((set, get) => {
       if (now.some(p => p.mid === clean.mid)) {
         return 'ok'; // already pinned
       }
-      if (now.length >= MAX_PINS) {
-        return 'full';
-      }
       const pins = [...now, clean];
       replace(withNote({...group, pins, pinned: undefined}, 'You pinned a message'));
-      others(group).forEach(k => sendTo(k, {t: 'info', id, pins}));
+      others(group).forEach(k => sendTo(k, {t: 'info', id, pinAdd: clean, pn: pins.length}));
       return 'ok';
     },
 
@@ -580,7 +662,7 @@ export const useGroupsStore = create<GroupsState>((set, get) => {
       }
       const pins = now.filter(p => p.mid !== mid);
       replace(withNote({...group, pins: pins.length ? pins : undefined, pinned: undefined}, 'You unpinned a message'));
-      others(group).forEach(k => sendTo(k, {t: 'info', id, pins}));
+      others(group).forEach(k => sendTo(k, {t: 'info', id, pinDel: mid, pn: pins.length}));
       return true;
     },
 

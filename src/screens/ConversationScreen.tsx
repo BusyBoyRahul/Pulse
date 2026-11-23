@@ -191,7 +191,13 @@ export default function ConversationScreen() {
   const [attachInFlow, setAttachInFlow] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [pinIdx, setPinIdx] = useState(0);
+  // Which pin the bar shows (0 = the newest); it starts again at the newest whenever the number of pins changes.
+  const [pinPos, setPinPos] = useState<{len: number; idx: number}>({len: 0, idx: 0});
+  const [pinMenu, setPinMenu] = useState(false);
+  // The message that was just jumped to: it gets a flashing outline so you can see exactly which one it is.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flashTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const jumpTries = useRef(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [muteOpen, setMuteOpen] = useState(false);
   const [selecting, setSelecting] = useState(false);
@@ -1221,30 +1227,47 @@ export default function ConversationScreen() {
     }
   };
 
-  /** Scroll to a message by its id (the pinned message at the top of a group). */
+  /** Scroll to a message by its id (a pinned message) and flash an outline around exactly that message. */
   const jumpToId = (mid: string) => {
     const idx = listRows.findIndex(r => r.kind === 'msg' && (r.msg.id === mid || r.album?.some(a => a.id === mid)));
     if (idx >= 0) {
+      jumpTries.current = 0;
       listRef.current?.scrollToIndex({index: idx, viewPosition: 0.4, animated: true});
+      flashTimers.current.forEach(clearTimeout);
+      setFlashId(null);
+      // Start after the scroll has had time to arrive, then let go again.
+      flashTimers.current = [setTimeout(() => setFlashId(mid), 450), setTimeout(() => setFlashId(null), 3200)];
     } else {
       toast('That message is no longer here');
     }
   };
 
-  // The messages pinned to the top of this chat (up to 3, oldest first): a group's (whoever may edit the group can pin and unpin) or a
-  // one-to-one chat's (either person can; not in secret chats or chats whose messages vanish).
+  // The messages pinned to the top of this chat, oldest first (no limit): a group's (whoever may edit the group can pin and unpin) or a
+  // one-to-one chat's (either person can; not in secret chats or chats whose messages vanish). Each pin is tied to ONE exact message (its id),
+  // so two messages with the same words are never mixed up; the bar and the list show who sent it and when, and photos show a small picture.
   const myKey = getIdentity().publicKey;
-  const pinList: {mid: string; who: string; text: string}[] =
+  const pinBase: {mid: string; who: string; text: string}[] =
     kind === 'group' && group
       ? pinsOf(group).map(p => ({mid: p.mid, who: p.from === myKey ? 'You' : p.fromName, text: p.text}))
       : kind === 'direct' && !secret
       ? (prefs?.pinMsgs ?? []).map(p => ({mid: p.mid, who: p.from === myKey ? 'You' : title, text: p.t}))
       : [];
+  const pinList = pinBase.map(p => {
+    const m = messages.find(x => x.id === p.mid);
+    const thumb = m && !m.viewOnce ? (m.type === 'image' ? m.image : m.type === 'file' ? m.file?.thumb : undefined) : undefined;
+    const time = m ? new Date(m.timestamp).toLocaleTimeString(undefined, {hour: 'numeric', minute: '2-digit'}) : '';
+    return {...p, thumb, when: m ? `${dayLabel(m.timestamp)} · ${time}` : ''};
+  });
+  const pinIds = new Set(pinList.map(p => p.mid));
   const canPin = kind === 'group' ? !!group && canEditInfoOf(group, myKey) : kind === 'direct' && !secret && !prefs?.disappear;
   const unpinMsg = (mid: string) =>
     kind === 'group' ? void useGroupsStore.getState().removePin(conversationId, mid) : void useChatStore.getState().unpinMessage(conversationId, kind, mid);
-  // The bar shows one pin at a time; tapping it goes to that message and moves on to the next pin.
-  const pinNow = pinList.length ? pinList[Math.min(pinIdx, pinList.length - 1)] : null;
+  // The bar shows one pin at a time, newest first; tapping it goes to that message and moves on to the next older pin (like Telegram).
+  const pinCur = pinList.length && pinPos.len === pinList.length ? Math.min(pinPos.idx, pinList.length - 1) : 0;
+  const pinNow = pinList.length ? pinList[pinList.length - 1 - pinCur] : null;
+  const pinNumber = pinList.length - pinCur;
+  const pinSegs = Math.min(pinList.length, 4);
+  const pinSegOn = pinList.length <= 4 ? pinCur : Math.min(3, Math.floor((pinCur * 4) / pinList.length));
 
   const forwardTo = async (toId: string, toKind: 'direct' | 'group', toTitle: string) => {
     const list = forwardOf ?? [];
@@ -1335,6 +1358,8 @@ export default function ConversationScreen() {
             : undefined
         }
         onOpenPerson={key => nav.navigate('Contact', {publicKey: key})}
+        flash={!!flashId && (item.msg.id === flashId || !!item.album?.some(a => a.id === flashId))}
+        pinned={pinIds.has(item.msg.id) || !!item.album?.some(a => pinIds.has(a.id))}
         selecting={selecting}
         selected={(item.album ?? [item.msg]).every(x => selected.includes(x.id))}
         album={item.album}
@@ -1386,7 +1411,7 @@ export default function ConversationScreen() {
           },
         ]
       : []),
-    // Pin a message to the top of the chat (up to 3 at once; the earlier ones stay). In a group, whoever may edit the group's info may pin;
+    // Pin a message to the top of the chat (as many as you like; the earlier ones stay). In a group, whoever may edit the group's info may pin;
     // in a one-to-one chat either person may — but not in secret chats or chats whose messages vanish.
     ...(singleMsg && !singleMsg.viewOnce && (singleMsg.type === 'text' || singleMsg.type === 'image' || singleMsg.type === 'file' || singleMsg.type === 'poll' || singleMsg.type === 'contact') && canPin
       ? [
@@ -1398,17 +1423,17 @@ export default function ConversationScreen() {
                 unpinMsg(singleMsg.id);
               } else {
                 const text = previewOf(singleMsg).slice(0, 160) || 'Message';
-                const done =
-                  kind === 'group'
+                if (
+                  (kind === 'group'
                     ? useGroupsStore.getState().addPin(conversationId, {
                         mid: singleMsg.id,
                         from: singleMsg.mine ? getIdentity().publicKey : singleMsg.from,
                         fromName: singleMsg.mine ? useSessionStore.getState().profileName || 'You' : singleMsg.fromName,
                         text,
                       })
-                    : useChatStore.getState().pinMessage(conversationId, kind, {mid: singleMsg.id, mine: singleMsg.mine, text});
-                if (done === 'full') {
-                  toast('You can pin 3 messages. Unpin one first.');
+                    : useChatStore.getState().pinMessage(conversationId, kind, {mid: singleMsg.id, mine: singleMsg.mine, text})) === 'ok'
+                ) {
+                  toast('Pinned');
                 }
               }
               exitSelecting();
@@ -1598,7 +1623,12 @@ export default function ConversationScreen() {
             )
           }
           contentContainerStyle={styles.list}
-          onScrollToIndexFailed={info => listRef.current?.scrollToOffset({offset: info.averageItemLength * info.index, animated: true})}
+          onScrollToIndexFailed={info => {
+            listRef.current?.scrollToOffset({offset: info.averageItemLength * info.index, animated: false});
+            if (jumpTries.current++ < 4) {
+              setTimeout(() => listRef.current?.scrollToIndex({index: info.index, viewPosition: 0.4, animated: true}), 150);
+            }
+          }}
           ListEmptyComponent={
             <View style={styles.empty}>
               <View style={styles.emptyIcon}>
@@ -1614,37 +1644,90 @@ export default function ConversationScreen() {
           }
         />
 
-        {/* A message pinned to the top of the chat (a group's, or a one-to-one chat's): tap to go to it. */}
+        {/* The pinned message bar (like Telegram's): a stripe with one segment per pin, a small picture for photos, "Pinned message #2", and a
+            list button. Tap the bar to go to that message; it then moves on to the next older pin. */}
         {pinNow && !selecting ? (
-          <Pressable
-            onPress={() => {
-              jumpToId(pinNow.mid);
-              setPinIdx((Math.min(pinIdx, pinList.length - 1) + 1) % pinList.length);
-            }}
-            style={styles.pinBar}
-            accessibilityRole="button"
-            accessibilityLabel={pinList.length > 1 ? `Pinned message ${Math.min(pinIdx, pinList.length - 1) + 1} of ${pinList.length}` : 'Pinned message'}>
-            <Icon name="pin" size={16} color={colors.primaryBright} />
-            <View style={{flex: 1}}>
-              <Txt variant="label" tone="accent" numberOfLines={1}>
-                {pinNow.who}
-              </Txt>
-              <Txt variant="caption" tone="secondary" numberOfLines={1}>
-                {pinNow.text}
-              </Txt>
-            </View>
+          <View style={styles.pinBar}>
+            <Pressable
+              onPress={() => {
+                jumpToId(pinNow.mid);
+                if (pinList.length > 1) {
+                  setPinPos({len: pinList.length, idx: (pinCur + 1) % pinList.length});
+                }
+              }}
+              style={styles.pinMain}
+              accessibilityRole="button"
+              accessibilityLabel={pinList.length > 1 ? `Pinned message ${pinNumber} of ${pinList.length}: ${pinNow.text}` : `Pinned message: ${pinNow.text}`}>
+              <View style={styles.pinStripe}>
+                {Array.from({length: pinSegs}).map((_, i) => (
+                  <View key={i} style={[styles.pinSeg, i === pinSegOn ? styles.pinSegOn : null]} />
+                ))}
+              </View>
+              {pinNow.thumb ? <Image source={{uri: `data:image/jpeg;base64,${pinNow.thumb}`}} style={styles.pinThumb} resizeMode="cover" /> : null}
+              <View style={{flex: 1}}>
+                <Txt variant="label" tone="accent" numberOfLines={1}>
+                  {pinList.length > 1 ? `Pinned message #${pinNumber}` : 'Pinned message'}
+                  {pinNow.when ? `  ·  ${pinNow.when}` : ''}
+                </Txt>
+                <Txt variant="caption" tone="secondary" numberOfLines={1}>
+                  {pinNow.who === 'You' || kind === 'direct' ? '' : `${pinNow.who}: `}
+                  {pinNow.thumb && (pinNow.text === 'Photo' || pinNow.text === 'Video') ? (pinNow.text === 'Video' ? 'Video' : 'Photo') : pinNow.text}
+                </Txt>
+              </View>
+            </Pressable>
             {pinList.length > 1 ? (
-              <Txt variant="caption" tone="muted">
-                {Math.min(pinIdx, pinList.length - 1) + 1}/{pinList.length}
-              </Txt>
-            ) : null}
-            {canPin ? (
-              <Pressable onPress={() => unpinMsg(pinNow.mid)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Unpin">
-                <Icon name="x" size={16} color={colors.textMuted} />
+              <Pressable onPress={() => setPinMenu(true)} style={styles.pinBtn} hitSlop={6} accessibilityRole="button" accessibilityLabel="All pinned messages">
+                <Icon name="list" size={20} color={colors.primaryBright} />
+              </Pressable>
+            ) : canPin ? (
+              <Pressable onPress={() => unpinMsg(pinNow.mid)} style={styles.pinBtn} hitSlop={6} accessibilityRole="button" accessibilityLabel="Unpin">
+                <Icon name="x" size={18} color={colors.textSecondary} />
               </Pressable>
             ) : null}
-          </Pressable>
+          </View>
         ) : null}
+
+        {/* Every pinned message, newest first: tap one to go to it. */}
+        <Popover visible={pinMenu} onClose={() => setPinMenu(false)} align="right">
+          <Txt variant="label" tone="muted" style={styles.pinMenuTitle}>
+            {`${pinList.length} pinned messages`}
+          </Txt>
+          <ScrollView style={{maxHeight: 380}} keyboardShouldPersistTaps="handled">
+            {[...pinList].reverse().map((p, i) => (
+              <Pressable
+                key={p.mid}
+                onPress={() => {
+                  setPinMenu(false);
+                  jumpToId(p.mid);
+                }}
+                style={({pressed}) => [styles.pinRow, pressed && {backgroundColor: colors.surfaceHover}]}
+                accessibilityRole="button"
+                accessibilityLabel={`Pinned message ${pinList.length - i}: ${p.text}`}>
+                {p.thumb ? (
+                  <Image source={{uri: `data:image/jpeg;base64,${p.thumb}`}} style={styles.pinRowThumb} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.pinRowThumb, styles.pinRowIcon]}>
+                    <Icon name="pin" size={18} color={colors.primaryBright} />
+                  </View>
+                )}
+                <View style={{flex: 1}}>
+                  <Txt variant="label" tone="accent" numberOfLines={1}>
+                    {`#${pinList.length - i}${p.when ? `  ·  ${p.when}` : ''}`}
+                  </Txt>
+                  <Txt variant="caption" tone="secondary" numberOfLines={1}>
+                    {kind === 'direct' ? '' : `${p.who}: `}
+                    {p.text}
+                  </Txt>
+                </View>
+                {canPin ? (
+                  <Pressable onPress={() => unpinMsg(p.mid)} hitSlop={8} style={styles.pinRowX} accessibilityRole="button" accessibilityLabel="Unpin">
+                    <Icon name="x" size={16} color={colors.textMuted} />
+                  </Pressable>
+                ) : null}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Popover>
 
         {/* Everything at the bottom floats over the chat, on no background */}
         <View style={styles.dock} pointerEvents="box-none" onLayout={e => {
@@ -2213,7 +2296,13 @@ function MessageBubble({
   onOpenAlbum,
   groupAvatar,
   onOpenPerson,
+  flash,
+  pinned,
 }: {
+  /** This message was just jumped to from a pinned-message bar: draw a flashing outline around it. */
+  flash?: boolean;
+  /** This message is pinned: a small pin mark on its corner. */
+  pinned?: boolean;
   /** Group chats: undefined = no picture column; null = column kept but empty (a follow-on message); otherwise whose picture to show. */
   groupAvatar?: {name: string; seed: string; uri?: string} | null;
   onOpenPerson?: (key: string) => void;
@@ -2295,6 +2384,12 @@ function MessageBubble({
           <View ref={ref} collapsable={false} style={[styles.bubble, msg.mine ? styles.mine : styles.their, isMedia && styles.bubbleMedia]}>
             <BubbleContent media={isMedia}  msg={msg} votes={votes} onVote={onVote} showSender={showSender} onOpenImage={onOpenImage} onJump={onJump} revealed={revealed} onReveal={onReveal} album={album} onOpenAlbum={onOpenAlbum} press={{selecting, toggle: () => onToggle(msg.id), longPress: measure}} />
           </View>
+          {pinned ? (
+            <View style={[styles.pinMark, msg.mine ? {left: -8} : {right: -8}]} pointerEvents="none">
+              <Icon name="pin" size={11} color="#FFFFFF" />
+            </View>
+          ) : null}
+          {flash ? <FlashRing /> : null}
         </Pressable>
         {reactions.length > 0 ? (
           <Pressable onPress={() => onShowReactions(msg.id)} style={[styles.reactions, msg.mine ? styles.reactionsMine : undefined]}>
@@ -2313,6 +2408,16 @@ function MessageBubble({
       </Animated.View>
     </Animated.View>
   );
+}
+
+/** A bright outline that pulses three times around a message (so you can see which one a pinned-message tap went to). */
+function FlashRing() {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const pulse = [Animated.timing(v, {toValue: 1, duration: 160, useNativeDriver: true}), Animated.timing(v, {toValue: 0.25, duration: 320, useNativeDriver: true})];
+    Animated.sequence([...pulse, ...pulse, Animated.timing(v, {toValue: 1, duration: 160, useNativeDriver: true}), Animated.timing(v, {toValue: 0, duration: 900, useNativeDriver: true})]).start();
+  }, [v]);
+  return <Animated.View pointerEvents="none" style={[styles.flashRing, {opacity: v}]} />;
 }
 
 function BubbleContent({
@@ -2852,7 +2957,20 @@ const styles = themedStyles(() => StyleSheet.create({
   emojiBtn: {paddingHorizontal: 6, paddingVertical: spacing.xs},
   // Same height as the message box (8 + 48 + 8), so the chat doesn't move when selecting starts.
   selDock: {height: 64, justifyContent: 'center', paddingHorizontal: spacing.md},
-  pinBar: {position: 'absolute', top: spacing.xs, left: spacing.md, right: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.lg, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, ...elevation.card},
+pinBar: {position: 'absolute', top: spacing.xs, left: spacing.md, right: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7, paddingLeft: spacing.md, paddingRight: 7, borderRadius: 24, backgroundColor: colors.surfaceRaised, borderWidth: 1.5, borderColor: alpha(colors.primary, 0.6), ...elevation.card},
+  pinMain: {flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10},
+  pinStripe: {width: 4, height: 38, gap: 2},
+  pinSeg: {flex: 1, borderRadius: 2, backgroundColor: alpha(colors.primary, 0.3)},
+  pinSegOn: {backgroundColor: colors.primaryBright},
+  pinThumb: {width: 40, height: 40, borderRadius: 9},
+  pinBtn: {width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: alpha(colors.primary, 0.14)},
+  pinMenuTitle: {paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs},
+  pinRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, minHeight: 56},
+  pinRowThumb: {width: 40, height: 40, borderRadius: 9},
+  pinRowIcon: {alignItems: 'center', justifyContent: 'center', backgroundColor: alpha(colors.primary, 0.14)},
+  pinRowX: {width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center'},
+  pinMark: {position: 'absolute', top: -7, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderWidth: 1.5, borderColor: colors.bg},
+  flashRing: {position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, borderRadius: radius.lg + 5, borderWidth: 2.5, borderColor: colors.primaryBright, backgroundColor: alpha(colors.primary, 0.16)},
   mentionBar: {marginHorizontal: spacing.md, marginBottom: spacing.xs, flexGrow: 0},
   mentionRow: {gap: spacing.sm, paddingVertical: 2},
   mentionChip: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm, height: 40, paddingHorizontal: spacing.md, paddingLeft: spacing.sm, borderRadius: 20, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, ...elevation.card},

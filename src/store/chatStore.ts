@@ -38,6 +38,7 @@ export type PollSend = {multi?: boolean; anon?: boolean; quiz?: number; explain?
 
 // --- wire event: everything that happens in a chat is one of these ----------
 type ReplyWire = {n: string; t: string};
+type PinWire = {mid: string; w: 0 | 1; t: string};
 type ChatEvent =
   | {k: 'msg'; id: string; name: string; text: string; r?: ReplyWire}
   | {k: 'img'; id: string; name: string; data: string; r?: ReplyWire}
@@ -68,8 +69,11 @@ type ChatEvent =
   | {k: 'opn'; mid: string}
   // Disappearing messages for this chat changed (0 = off).
   | {k: 'dis'; ms: number}
-  // The messages pinned to the top of a one-to-one chat, the whole list as the sender has it (empty = none). w: 1 = the sender of this note wrote that message.
-  | {k: 'pin'; ps: {mid: string; w: 0 | 1; t: string}[]}
+  // The messages pinned to the top of a one-to-one chat. Sent as CHANGES (add one / del one; n = how many pins the sender has after it), so there is
+  // no limit. ps (+ i of `of`) = the whole list in small parts, sent when the other phone asks (pinq) because its count differs.
+  // w: 1 = the sender of this note wrote that message.
+  | {k: 'pin'; add?: PinWire; del?: string; n?: number; ps?: PinWire[]; i?: number; of?: number}
+  | {k: 'pinq'}
   // First message of a fresh encrypted session (carries nothing, just hands over keys).
   | {k: 'hi'}
   // Status updates (handled by statusStore, never shown as a chat message).
@@ -140,7 +144,7 @@ const FILE_MAX_ASKS = 14;
 const lastTypingSent = new Map<string, number>();
 const safeFileName = (n: string) => n.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80) || 'file';
 const selfKey = () => getIdentity().publicKey;
-const MAX_PINS = 3;
+const PIN_CHUNK = 15;
 /** Take a one-to-one chat's pinned message away (just that one when an id is given, otherwise all of them). */
 function clearPin(conversationId: string, mid?: string) {
   const pins = usePrefsStore.getState().prefs[conversationId]?.pinMsgs;
@@ -152,16 +156,33 @@ function clearPin(conversationId: string, mid?: string) {
     usePrefsStore.getState().patch(conversationId, {pinMsgs: left.length ? left : undefined});
   }
 }
-/** Keep this list of pinned messages here and tell the other person (said three times in case one is lost — but never an old list after a newer change). */
-function sharePins(conversationId: string, kind: ConversationKind, pins: {mid: string; from: string; t: string; by: string}[]) {
-  usePrefsStore.getState().patch(conversationId, {pinMsgs: pins.length ? pins : undefined});
-  const note: ChatEvent = {k: 'pin', ps: pins.map(p => ({mid: p.mid, w: p.from === selfKey() ? 1 : 0, t: p.t}))};
-  const sig = pins.map(p => p.mid).join(',');
-  const same = () => (usePrefsStore.getState().prefs[conversationId]?.pinMsgs ?? []).map(p => p.mid).join(',') === sig;
+type PinRec = {mid: string; from: string; t: string; by: string};
+const pinsHere = (conversationId: string): PinRec[] => usePrefsStore.getState().prefs[conversationId]?.pinMsgs ?? [];
+const setPinsHere = (conversationId: string, list: PinRec[]) => usePrefsStore.getState().patch(conversationId, {pinMsgs: list.length ? list : undefined});
+
+/** Tell the other person about ONE change (a pin added or taken away). It is said three times in case one is lost, but a repeat is only
+ *  sent while it is still true here (so an old "add" can never come back after an "unpin"). */
+function sendPinOp(conversationId: string, kind: ConversationKind, op: {add?: PinWire; del?: string}) {
+  const note: ChatEvent = {k: 'pin', ...op, n: pinsHere(conversationId).length};
+  const stillTrue = () => {
+    const has = (mid: string) => pinsHere(conversationId).some(p => p.mid === mid);
+    return op.add ? has(op.add.mid) : op.del ? !has(op.del) : false;
+  };
   quietSend(conversationId, kind, note);
-  setTimeout(() => same() && quietSend(conversationId, kind, note), 3000);
-  setTimeout(() => same() && quietSend(conversationId, kind, note), 15000);
+  setTimeout(() => stillTrue() && quietSend(conversationId, kind, note), 3000);
+  setTimeout(() => stillTrue() && quietSend(conversationId, kind, note), 15000);
 }
+/** Send the whole pin list in small parts (when the other phone asked for it). */
+function sendAllPins(conversationId: string, kind: ConversationKind) {
+  const list = pinsHere(conversationId);
+  const of = Math.max(1, Math.ceil(list.length / PIN_CHUNK));
+  for (let i = 0; i < of; i++) {
+    const ps = list.slice(i * PIN_CHUNK, (i + 1) * PIN_CHUNK).map(p => ({mid: p.mid, w: (p.from === selfKey() ? 1 : 0) as 0 | 1, t: p.t}));
+    quietSend(conversationId, kind, {k: 'pin', ps, i, of});
+  }
+}
+const pinParts = new Map<string, {of: number; parts: Map<number, PinWire[]>}>();
+const pinAsked = new Map<string, number>();
 /** The short plain copy of a pinned message that is kept and shown in the bar. */
 const pinText = (t: unknown) => (typeof t === 'string' ? t.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 160) : '');
 // Chunks that outran their header (different relay paths reorder things).
@@ -246,8 +267,8 @@ type ChatState = {
   setDisappear: (conversationId: string, kind: ConversationKind, ms: number) => void;
   toggleStar: (conversationId: string, messageId: string) => void;
   editMessage: (conversationId: string, kind: ConversationKind, messageId: string, text: string) => boolean;
-  /** Pin one more message to the top of a one-to-one chat for both people (up to 3; the others stay). 'full' = 3 are pinned already. Not in secret chats or chats with disappearing messages. */
-  pinMessage: (conversationId: string, kind: ConversationKind, pin: {mid: string; mine: boolean; text: string}) => 'ok' | 'full' | 'no';
+  /** Pin one more message to the top of a one-to-one chat for both people (no limit; the others stay). Not in secret chats or chats with disappearing messages. */
+  pinMessage: (conversationId: string, kind: ConversationKind, pin: {mid: string; mine: boolean; text: string}) => 'ok' | 'no';
   /** Take one pinned message away (the others stay). */
   unpinMessage: (conversationId: string, kind: ConversationKind, mid: string) => void;
   forwardMessage: (toId: string, toKind: ConversationKind, msg: ChatMessage, album?: AlbumTag) => Promise<void>;
@@ -829,21 +850,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!pin.mid || !t) {
       return 'no';
     }
-    const now = prefsApi.prefs[conversationId]?.pinMsgs ?? [];
+    const now = pinsHere(conversationId);
     if (now.some(p => p.mid === pin.mid)) {
       return 'ok'; // already pinned
     }
-    if (now.length >= MAX_PINS) {
-      return 'full';
-    }
-    sharePins(conversationId, kind, [...now, {mid: pin.mid, from: pin.mine ? selfKey() : conversationId, t, by: selfKey()}]);
+    setPinsHere(conversationId, [...now, {mid: pin.mid, from: pin.mine ? selfKey() : conversationId, t, by: selfKey()}]);
+    sendPinOp(conversationId, kind, {add: {mid: pin.mid, w: pin.mine ? 1 : 0, t}});
     return 'ok';
   },
 
   unpinMessage: (conversationId, kind, mid) => {
-    const now = usePrefsStore.getState().prefs[conversationId]?.pinMsgs ?? [];
-    if (kind === 'direct' && now.some(p => p.mid === mid)) {
-      sharePins(conversationId, kind, now.filter(p => p.mid !== mid));
+    if (kind === 'direct' && pinsHere(conversationId).some(p => p.mid === mid)) {
+      setPinsHere(conversationId, pinsHere(conversationId).filter(p => p.mid !== mid));
+      sendPinOp(conversationId, kind, {del: mid});
     }
   },
 
@@ -1530,22 +1549,58 @@ function applyEvent(
       }
       break;
     }
+    case 'pinq': {
+      // The other phone's pin list differs from mine: send it whole (in small parts).
+      if (convKind === 'direct' && !isSecretId(conversationId)) {
+        sendAllPins(conversationId, convKind);
+      }
+      break;
+    }
     case 'pin': {
       // Only one-to-one chats, never secret chats or ones that make messages vanish. "by" is who really sent this note.
       if (convKind !== 'direct' || isSecretId(conversationId) || usePrefsStore.getState().prefs[conversationId]?.disappear) {
         break;
       }
-      if (!Array.isArray(event.ps)) {
+      const clean = (p: unknown): PinRec | null => {
+        const o = p as Partial<PinWire> | null;
+        const t = pinText(o?.t);
+        return o && typeof o.mid === 'string' && o.mid && o.mid.length <= 80 && t ? {mid: o.mid, from: o.w === 1 ? origin : selfKey(), t, by: origin} : null;
+      };
+      if (Array.isArray(event.ps)) {
+        // The whole list. Without `of` it is one old-style message; with it, parts collected until all are here.
+        const parts = Number.isInteger(event.of) && event.of! > 1 && event.of! <= 400 && Number.isInteger(event.i) && event.i! >= 0 && event.i! < event.of! ? event.of! : 1;
+        const key = conversationId;
+        const got = pinParts.get(key) && pinParts.get(key)!.of === parts ? pinParts.get(key)! : {of: parts, parts: new Map<number, PinWire[]>()};
+        got.parts.set(parts === 1 ? 0 : event.i!, event.ps);
+        pinParts.set(key, got);
+        if (got.parts.size >= got.of) {
+          pinParts.delete(key);
+          const list: PinRec[] = [];
+          for (let i = 0; i < got.of; i++) {
+            for (const raw of got.parts.get(i) ?? []) {
+              const rec = clean(raw);
+              if (rec && !list.some(x => x.mid === rec.mid)) {
+                list.push(rec);
+              }
+            }
+          }
+          setPinsHere(conversationId, list);
+        }
         break;
       }
-      const list: {mid: string; from: string; t: string; by: string}[] = [];
-      for (const p of event.ps) {
-        const t = pinText(p?.t);
-        if (p && typeof p.mid === 'string' && p.mid && p.mid.length <= 80 && t && !list.some(x => x.mid === p.mid) && list.length < MAX_PINS) {
-          list.push({mid: p.mid, from: p.w === 1 ? origin : selfKey(), t, by: origin});
-        }
+      let list = pinsHere(conversationId);
+      const add = event.add ? clean(event.add) : null;
+      if (add && !list.some(x => x.mid === add.mid)) {
+        list = [...list, add];
       }
-      usePrefsStore.getState().patch(conversationId, {pinMsgs: list.length ? list : undefined});
+      if (typeof event.del === 'string') {
+        list = list.filter(x => x.mid !== event.del);
+      }
+      setPinsHere(conversationId, list);
+      if (typeof event.n === 'number' && list.length !== event.n && Date.now() - (pinAsked.get(conversationId) ?? 0) > 20000) {
+        pinAsked.set(conversationId, Date.now());
+        quietSend(conversationId, convKind, {k: 'pinq'}); // my count differs: ask for the whole list
+      }
       break;
     }
     case 'opn': {

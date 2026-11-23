@@ -1,5 +1,5 @@
 /**
- * Messages pinned in a one-to-one chat: both people see them, a new pin never replaces an older one (up to 3), either can unpin
+ * Messages pinned in a one-to-one chat: both people see them, a new pin never replaces an older one (no limit), either can unpin
  * one, a pin goes when its message is taken back, and none are kept in a chat whose messages vanish.
  */
 import {Bus, makePhone} from '@/testing/meshHarness';
@@ -19,7 +19,7 @@ async function setup() {
   B.pairing.setState({paired: [{publicKey: A.pub, name: 'Phone A', pairedAt: 1}]});
   bus.link('A', 'B');
   await tick(200);
-  return {A, B};
+  return {A, B, bus};
 }
 
 const pinsOn = (p: any, peer: string): {mid: string; from: string; t: string; by: string}[] => p.prefs.getState().prefs[peer]?.pinMsgs ?? [];
@@ -68,19 +68,37 @@ describe('pinned messages in a one-to-one chat', () => {
     expect(ids(B, A.pub)).toEqual([]);
   });
 
-  it('holds three at most; a fourth is refused and nothing is lost', async () => {
+  it('has no limit: 40 pins reach the other phone in order', async () => {
     const {A, B} = await setup();
     const mids: string[] = [];
-    for (const t of ['one', 'two', 'three', 'four']) {
-      mids.push(await send(A, B, t));
+    for (let i = 0; i < 40; i++) {
+      mids.push(await send(A, B, 'same words')); // forty messages with identical text
+      expect(A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[i], mine: true, text: 'same words'})).toBe('ok');
     }
-    expect(A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[0], mine: true, text: 'one'})).toBe('ok');
-    expect(A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[1], mine: true, text: 'two'})).toBe('ok');
-    expect(A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[2], mine: true, text: 'three'})).toBe('ok');
-    expect(A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[3], mine: true, text: 'four'})).toBe('full');
+    await tick(500);
+    expect(ids(A, B.pub)).toEqual(mids);
+    expect(ids(B, A.pub)).toEqual(mids);
+  });
+
+  it('a phone that missed some pins asks for the whole list and catches up', async () => {
+    const {A, B, bus} = await setup();
+    const mids = [await send(A, B, 'a'), await send(A, B, 'b'), await send(A, B, 'c'), await send(A, B, 'd')];
+    A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[0], mine: true, text: 'a'});
     await tick(300);
-    expect(ids(A, B.pub)).toEqual(mids.slice(0, 3));
-    expect(ids(B, A.pub)).toEqual(mids.slice(0, 3));
+    expect(ids(B, A.pub)).toEqual([mids[0]]);
+    bus.drop = to => to === 'B';
+    A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[1], mine: true, text: 'b'});
+    A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[2], mine: true, text: 'c'});
+    await tick(300);
+    expect(ids(B, A.pub)).toEqual([mids[0]]);
+    bus.drop = null;
+    A.chat.getState().pinMessage(B.pub, 'direct', {mid: mids[3], mine: true, text: 'd'});
+    await tick(800);
+    expect(ids(B, A.pub)).toEqual(mids);
+    // and unpinning one is a change too
+    A.chat.getState().unpinMessage(B.pub, 'direct', mids[1]);
+    await tick(300);
+    expect(ids(B, A.pub)).toEqual([mids[0], mids[2], mids[3]]);
   });
 
   it('a pin goes when its message is taken back for everyone or deleted here; the others stay', async () => {

@@ -29,7 +29,7 @@ async function setup() {
   B.groups.getState().accept(g.id);
   C.groups.getState().accept(g.id);
   await tick(200);
-  return {A, B, C, id: g.id as string};
+  return {A, B, C, bus, id: g.id as string};
 }
 
 const noteTexts = (p: any, id: string) => (p.groups.getState().get(id)?.notes ?? []).map((n: {text: string}) => n.text);
@@ -55,14 +55,14 @@ describe('group extras', () => {
     for (const p of [A, B, C]) {
       expect(pinIds(p, id)).toEqual(['m1', 'm2']);
     }
-    // up to 3; a 4th is refused and nothing is lost
+    // there is no limit: a 3rd and a 4th pin both go in, and nothing is lost
     expect(C.groups.getState().addPin(id, {mid: 'm3', from: C.pub, fromName: 'Phone C', text: 'Rain gear'})).toBe('ok');
-    expect(C.groups.getState().addPin(id, {mid: 'm4', from: C.pub, fromName: 'Phone C', text: 'One too many'})).toBe('full');
+    expect(C.groups.getState().addPin(id, {mid: 'm4', from: C.pub, fromName: 'Phone C', text: 'Same words'})).toBe('ok');
     await tick(200);
-    expect(pinIds(A, id)).toEqual(['m1', 'm2', 'm3']);
+    expect(pinIds(A, id)).toEqual(['m1', 'm2', 'm3', 'm4']);
     // pinning the same message again changes nothing
     expect(A.groups.getState().addPin(id, {mid: 'm2', from: B.pub, fromName: 'Phone B', text: 'Bring water'})).toBe('ok');
-    expect(pinIds(A, id)).toEqual(['m1', 'm2', 'm3']);
+    expect(pinIds(A, id)).toEqual(['m1', 'm2', 'm3', 'm4']);
 
     // once edits are admins-only, members may not; the admin removes just one pin
     A.groups.getState().setPerms(id, {edit: 'admins'});
@@ -72,7 +72,7 @@ describe('group extras', () => {
     expect(A.groups.getState().removePin(id, 'm1')).toBe(true);
     await tick(200);
     for (const p of [A, B, C]) {
-      expect(pinIds(p, id)).toEqual(['m2', 'm3']);
+      expect(pinIds(p, id)).toEqual(['m2', 'm3', 'm4']);
     }
     expect(noteTexts(B, id)).toContain('Phone A unpinned a message');
     // an empty or missing message can't be pinned
@@ -120,5 +120,73 @@ describe('group extras', () => {
     await A.chat.getState().sendText(id, 'group', 'hello @Bella, are you coming?');
     await tick(300);
     expect(B.notify.show).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('many pins in a group', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('has no limit: 60 pins reach everybody, in order, even though no single message could hold them all', async () => {
+    const {A, B, C, id} = await setup();
+    const all: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      all.push(`m${i}`);
+      expect(A.groups.getState().addPin(id, {mid: `m${i}`, from: A.pub, fromName: 'Phone A', text: `Meet at gate ${i % 3}`})).toBe('ok'); // the same words again and again
+    }
+    await tick(500);
+    for (const p of [A, B, C]) {
+      expect(pinIds(p, id)).toEqual(all);
+    }
+  });
+
+  it('a phone that missed some pins asks for the whole list and catches up', async () => {
+    const {A, B, bus, id} = await setup();
+    A.groups.getState().addPin(id, {mid: 'a', from: A.pub, fromName: 'Phone A', text: 'one'});
+    await tick(200);
+    expect(pinIds(B, id)).toEqual(['a']);
+    bus.drop = to => to === 'B'; // B hears nothing for a while
+    A.groups.getState().addPin(id, {mid: 'b', from: A.pub, fromName: 'Phone A', text: 'two'});
+    A.groups.getState().addPin(id, {mid: 'c', from: A.pub, fromName: 'Phone A', text: 'three'});
+    await tick(200);
+    expect(pinIds(B, id)).toEqual(['a']);
+    bus.drop = null;
+    A.groups.getState().addPin(id, {mid: 'd', from: A.pub, fromName: 'Phone A', text: 'four'});
+    await tick(500);
+    expect(pinIds(B, id)).toEqual(['a', 'b', 'c', 'd']); // B saw a count of 4, had 2, asked, and got the whole list
+  });
+
+  it('a person who joins later sees what is already pinned', async () => {
+    const bus = new Bus();
+    const A = makePhone('A', bus);
+    const B = makePhone('B', bus);
+    const C = makePhone('C', bus);
+    await Promise.all([A, B, C].map(p => p.engine.start()));
+    for (const p of [A, B, C]) {
+      p.chat.getState().init();
+      p.pairing.getState().init();
+      p.groups.getState().init();
+    }
+    const all = [A, B, C];
+    for (const p of all) {
+      p.pairing.setState({paired: all.filter(o => o !== p).map(o => ({publicKey: o.pub, name: `Phone ${o.id}`, pairedAt: 1}))});
+    }
+    bus.link('A', 'B');
+    bus.link('A', 'C');
+    bus.link('B', 'C');
+    const g = A.groups.getState().create('Early', [B.pub]);
+    await tick(200);
+    B.groups.getState().accept(g.id);
+    await tick(200);
+    for (let i = 0; i < 20; i++) {
+      A.groups.getState().addPin(g.id, {mid: `p${i}`, from: A.pub, fromName: 'Phone A', text: `note ${i}`});
+    }
+    await tick(300);
+    A.groups.getState().addMembers(g.id, [C.pub]);
+    await tick(300);
+    C.groups.getState().accept(g.id);
+    await tick(500);
+    expect(pinIds(C, g.id).length).toBe(20);
+    expect(pinIds(C, g.id)).toEqual(pinIds(A, g.id));
   });
 });
